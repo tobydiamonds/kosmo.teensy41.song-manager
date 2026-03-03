@@ -7,31 +7,17 @@
 #include "I2CSlave.h"
 #include "KosmoMasterI2CService.h"
 #include "AutomationController.h"
+#include "UI.h"
+#include "Channel.h"
 
-#define LED_CLK 2  // => 595/
-#define LED_DATA 3 // => 595/
-#define LED_LATCH 4// => 595/
-
-#define BTN_LOAD 5 // => 165/1
-#define BTN_CLK 6  // => 165/2
-#define BTN_DATA 7 // <= 165/9
+#define CLOCK_IN_PIN 12
 
 // these pins are connected to the pinheader, but not in use
-#define NOT_USED_1 8
 #define NOT_USED_2 9
 #define NOT_USED_3 10
 #define NOT_USED_4 11
-#define NOT_USED_5 12
 #define NOT_USED_6 27 // analog pin
 
-// mux pins
-#define MUX_CH_1 24 // analog input for pots 1..16
-#define MUX_CH_2 25 // analog input for pots 17..32
-#define MUX_CH_3 26 // analog input for pots 33..48
-#define MUX_S0   28
-#define MUX_S1   29
-#define MUX_S2   30
-#define MUX_S3   31
 
 //const int chipSelect = BUILTIN_SDCARD;
 
@@ -43,6 +29,11 @@ EXTMEM AutomationController automationController;
 
 EXTMEM Song currentSong;
 InstructionPackage loadSong;
+
+Channel parts[PARTS];
+SongManagerUI ui(parts);
+
+
 
 bool songLoading = false;
 bool songLoaded = false;
@@ -107,16 +98,23 @@ void printStructureSizes() {
 //   }
 // }
 void setup() {
-  pinMode(LED_CLK, OUTPUT);
-  pinMode(LED_DATA, OUTPUT);
-  pinMode(LED_LATCH, OUTPUT);
 
-  pinMode(BTN_LOAD, OUTPUT);
-  pinMode(BTN_CLK, OUTPUT);
-  pinMode(BTN_DATA, INPUT);
 
   //Wire.begin();
   Serial.begin(115200);
+
+  // ui
+  ui.begin();
+
+  // parts
+  for(int i=0; i<PARTS; i++) {
+    parts[i] = Channel(i, 7-i); // first parameter: channel nummber, second parameter: bit index of the channel button from 595
+    parts[i].OnPartCompleted(onPartCompleted);
+    parts[i].OnBeforePartCompleted(onBeforePartCompleted);
+    parts[i].OnPartStarted(onPartStarted);
+    parts[i].OnPartStopped(onPartStopped);
+  }
+
 
   // Initialize the SD card
   // if (!SD.begin(chipSelect)) {
@@ -175,6 +173,18 @@ void setup() {
   Serial.println("Initialization done.");
 
   printStructureSizes();
+}
+
+void onBeforePartCompleted(uint8_t partIndex, int8_t chainToPart) {
+}
+
+void onPartCompleted(uint8_t partIndex, int8_t chainToPart) {
+}
+
+void onPartStarted(uint8_t partIndex) {
+}
+
+void onPartStopped(uint8_t partIndex) {
 }
 
 void onAutomation(const Automation automation) {
@@ -249,106 +259,93 @@ void updateUI(uint8_t data) {
 void loop() {
   now = millis();
 
-  if(now > (lastCurrentStepChange + 128)) {
-    lastCurrentStepChange = now;
-    currentStep++;
-  }
+  ui.scan(now);
 
-  if(now > (lastPartIndexChange + 2048)) {
-    lastPartIndexChange = now;
-    currentStep = 0;
-    lastCurrentStepChange = now;
+  // if(now > (lastCurrentStepChange + 128)) {
+  //   lastCurrentStepChange = now;
+  //   currentStep++;
+  // }
 
-    if(currentPartIndex == PARTS) {
-      currentPartIndex = 0;
-    }
+  // if(now > (lastPartIndexChange + 2048)) {
+  //   lastPartIndexChange = now;
+  //   currentStep = 0;
+  //   lastCurrentStepChange = now;
 
-    if(currentPartIndex==0) {
-      master.sendInstruction(8, Instruction::Start);
-    }
+  //   if(currentPartIndex == PARTS) {
+  //     currentPartIndex = 0;
+  //   }
 
-    master.sendCurrentPartIndex(currentPartIndex);
+  //   if(currentPartIndex==0) {
+  //     master.sendInstruction(8, Instruction::Start);
+  //   }
 
-    if(currentPartIndex==4) {
-      Part part;
-      part = master.retrievePartFromSlaves();
-      //printSongPart(part, -1);
-    }
+  //   master.sendCurrentPartIndex(currentPartIndex);
+
+  //   if(currentPartIndex==4) {
+  //     Part part;
+  //     part = master.retrievePartFromSlaves();
+  //     //printSongPart(part, -1);
+  //   }
 
 
-    if(currentPartIndex==7) {
+  //   if(currentPartIndex==7) {
 
-      master.sendInstruction(8, Instruction::Stop);
+  //     master.sendInstruction(8, Instruction::Stop);
 
-      songLoaded = false;
-      songLoading = true;
-      loadSong = master.sendSongParts(currentSong);
+  //     songLoaded = false;
+  //     songLoading = true;
+  //     loadSong = master.sendSongParts(currentSong);
       
-      Serial.println("LOADING SONG");
-      printInstructionPackage(loadSong);
-    }
+  //     Serial.println("LOADING SONG");
+  //     printInstructionPackage(loadSong);
+  //   }
 
-    Serial.print("Loading automations for part ");
-    Serial.println(currentPartIndex);
-    automationController.load(currentSong.parts[currentPartIndex]);
+  //   Serial.print("Loading automations for part ");
+  //   Serial.println(currentPartIndex);
+  //   automationController.load(currentSong.parts[currentPartIndex]);
 
-    currentPartIndex++;
-  }
+  //   currentPartIndex++;
+  // }
 
   automationController.run(now, currentStep);
   master.run(now);
 
-  if(songLoaded) {
-    songLoadedLed = true;
+  // if(songLoaded) {
+  //   songLoadedLed = true;
+  // }
+
+  // if(songLoading && now > (lastSongLoadingLed + 200)) {
+  //   lastSongLoadingLed = now;
+  //   songLoadedLed = !songLoadedLed;
+  // }
+
+  // if(instructionLed && now > (lastInstructionLed + 150)) {
+  //   lastInstructionLed = now;
+  //   instructionLed = false;
+  // }
+
+  // if(songLoadedLed)
+  //   ledPattern |= songLoadedPattern;
+  // else
+  //   ledPattern &= ~(songLoadedPattern);
+
+  // if(instructionLed)
+  //   ledPattern |= instructionLedPattern;
+  // else 
+  //   ledPattern &= ~(instructionLedPattern);
+  // updateUI(ledPattern);
+
+
+  for(int i=0; i<PARTS; i++) {
+
+    parts[i].SetPageCount(2);
+    parts[i].SetChainTo(-1);
+    parts[i].SetRepeats(1);
+
+    parts[i].Run(now);  
   }
 
-  if(songLoading && now > (lastSongLoadingLed + 200)) {
-    lastSongLoadingLed = now;
-    songLoadedLed = !songLoadedLed;
-  }
-
-  if(instructionLed && now > (lastInstructionLed + 150)) {
-    lastInstructionLed = now;
-    instructionLed = false;
-  }
-
-  if(songLoadedLed)
-    ledPattern |= songLoadedPattern;
-  else
-    ledPattern &= ~(songLoadedPattern);
-
-  if(instructionLed)
-    ledPattern |= instructionLedPattern;
-  else 
-    ledPattern &= ~(instructionLedPattern);
-  
-  updateUI(ledPattern);
+  ui.update(now);
 }
 
 
-  // if(now > (lastInputScan + 150)) {
-  //   lastInputScan = now;
-  //   buttonsArrayValue = scanInput();
-  //   Serial.print("Butttons: ");
-  //   printByteln(buttonsArrayValue);
-  // }
-
-  // if(now > (lastRequest + 500)) {
-  //   lastRequest = now;
-
-  //   Serial.println("Sending value to slave");
-  //   Wire.beginTransmission(8);
-  //   Wire.write(buttonsArrayValue);
-  //   Wire.endTransmission();
-
-  //   Serial.println("Requesting from slave");
-  //   Wire.requestFrom(8, 1); // Request 1 byte from slave device #8
-
-  //   if (Wire.available()) {
-  //     valueFromSlave = Wire.read();
-  //     Serial.print("Received: ");
-  //     printByteln(valueFromSlave);
-
-  //     updateUI(valueFromSlave);
-  //   }
-  // }

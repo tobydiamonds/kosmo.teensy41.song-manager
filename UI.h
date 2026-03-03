@@ -1,0 +1,265 @@
+#ifndef SongManagerUI_h
+#define SongManagerUI_h
+
+#include "Common.h"
+#include "Channel.h"
+#include "DebounceButton165.h"
+
+// all led outputs via 74HC595
+#define LED_CLK 2  // => 595/11
+#define LED_LATCH 3 // => 595/12
+#define LED_DATA 4// => 595/14
+
+// all digital inputs vua 74HC165
+#define BTN_LOAD 5 // => 165/1
+#define BTN_CLK 6  // => 165/2
+#define BTN_DATA 7 // <= 165/9
+#define BTN_LATCH 8// => 165/15
+
+// mux pins
+#define MUX_CH_1 24 // analog input for pots 1..16
+#define MUX_CH_2 25 // analog input for pots 17..32
+#define MUX_CH_3 26 // analog input for pots 33..48
+#define MUX_S0   28
+#define MUX_S1   29
+#define MUX_S2   30
+#define MUX_S3   31
+
+// operations board input bit mask
+#define PROGRAM_BTN 0
+#define LOAD_BTN 1
+#define NEXT_SONG_BTN 2
+#define PREV_SONG_BTN 3
+
+// operations board led bit mask
+#define CLOCK_IN_LED 1 // DIG0
+#define PROGRAMMER_LED_R 2 // DIG1
+#define PROGRAMMER_LED_G 3 // DIG2
+#define PROGRAMMER_LED_B 4 // DIG3
+
+
+#define SCAN_INTERVAL 50
+#define DIGITS 5
+
+
+class SongManagerUI {
+
+private:
+  DebounceButton165 programBtn;
+  DebounceButton165 loadBtn;
+  DebounceButton165 nextSongBtn;
+  DebounceButton165 prevSongBtn;
+  Channel (&parts)[PARTS];
+
+  unsigned long lastScan;
+  bool blinkSongNumber;
+  bool programmingLed;
+  bool songIsLoading;
+  bool songLoadingLed;
+  bool programming;
+  bool clockInLed;
+
+  int selectedSongNumber = 4;
+
+
+  void scanInputs() {
+
+  }
+
+  void write595byte(uint8_t data, uint8_t bitOrder = LSBFIRST) {
+    shiftOut(LED_DATA, LED_CLK, bitOrder, data);
+  }
+
+  // 2-digit display
+  const uint8_t digitEnable[2] = {
+    static_cast<uint8_t>(~(B01000000)), // QG -> digit1 (MSD)
+    static_cast<uint8_t>(~(B10000000))  // QH -> digit2
+  };
+
+
+  const byte digitToSegment[14] = {
+    // GFEDCBAdp
+    B01111110, // 0
+    B00001100, // 1
+    B10110110, // 2
+    B10011110, // 3
+    B11001100, // 4
+    B11011010, // 5
+    B11111010, // 6
+    B00001110, // 7
+    B11111110, // 8
+    B11011110, // 9
+    B00000000,  // reset display
+    B11100110, // P
+    B10100000, // r
+    B11111010  // G
+  };
+
+
+  const byte digitToSegment28[12] = {
+    // dpGFEDCBA
+    B00111111, // 0
+    B00110000, // 1
+    B01011011, // 2
+    B01111001, // 3
+    B01110100, // 4
+    B01101101, // 5
+    B01101111, // 6
+    B00111000, // 7
+    B01111111, // 8
+    B01111100, // 9
+    B00000000,  // reset display
+    B01000000, // dash
+  };
+
+  int getDigit(int number, int position) {
+    // position = 0 => least significant digit
+    for (int i = 0; i < position; i++) {
+      number /= 10;
+    }
+    return number % 10;
+  }
+
+
+  void updateOperationsBoardDigit(int digit, int songNumber) {
+
+    /*
+    * 1st 595:          2nd 595:
+    * QA => SEG G       QA => digit 1 enable (active low) 0x01
+    * QB => SEG F       QB => digit 2 enable (Active low) 0x02
+    * ...               QC => RGB R (active low)          0x08
+    * QG => SEG A       QD => RGB G (active low)          0x10
+    * QH => dp          QE => RGB B (active low)          0x20
+    *                   QF => clock in led                0x04
+    */
+
+
+    uint8_t data[2] = {0};
+    int index = (digit % 2 == 0) ? 1 : 0; // we have only 2 digits in the ops board, so whatever digit value comes in, we want to determine which of the 2 digits we are updating
+
+    int digitVal = getDigit(songNumber, index);
+    data[0] = (blinkSongNumber) ? 0x00 : digitToSegment[digitVal];
+    data[1] = digitEnable[index];
+
+    if(programmingLed)  // red led blinking while loading
+      data[1] &= ~0x08;
+    else
+      data[1] |= 0x08;
+
+    if(songIsLoading) {
+      if(songLoadingLed)  // green led blinking while loading
+        data[1] &= ~0x10;
+      else
+        data[1] |= 0x10;
+    } else if(!programming) {
+      data[1] &= ~0x10;  // green led static when song is loaded
+    }
+
+    if(clockInLed)
+      data[1] &= ~0x04;
+    else
+      data[1] |= 0x04;
+    
+
+    write595byte(data[1]);
+    write595byte(data[0]);
+
+  }
+
+  void updatePartDigit(int partIndex, int digit) {
+    /*
+    * 1st 595:                                        2nd 595:
+    * QA => DIG_0 enable (LEDS)                       QA => SEG_A
+    * QB => DIG_1 enable (no. of repeats left digit)  QB => SEG_B
+    * QC => DIG_2 enable (no. of repeats right digit) QC => SEG_C
+    * QD => DIG_3 enable (chain ch left digit)        QD => SEG_D
+    * QE => DIG_4 enable (chain ch right digit)       QE => SEG_E
+    * QF => nc                                        QF => SEG_F
+    * QG => nc                                        QG => SEG_F
+    * QH => nc                                        QH => SEG_DP
+    */
+
+
+    uint8_t digitData = (1 << digit); // enable the digit
+    uint8_t segmentData = 0;
+    int8_t chainTo = parts[partIndex].ChainTo();
+
+    switch(digit) {
+      case 0:
+        for(int i=0; i<4; i++) {
+          if(parts[partIndex].PageLedState(i))
+            segmentData |= (1 << i);
+          else
+            segmentData &= ~(1 << i);
+        }
+        break;
+      case 1:
+        if(parts[partIndex].IsStarted())
+          segmentData = digitToSegment28[parts[partIndex].RemainingRepeats() % 10];
+        else
+          segmentData = digitToSegment28[parts[partIndex].Repeats() % 10];
+        break;
+      case 2:
+        if(parts[partIndex].IsStarted())
+          segmentData = digitToSegment28[parts[partIndex].RemainingRepeats() / 10];
+        else
+          segmentData = digitToSegment28[parts[partIndex].Repeats() / 10];
+        break;      
+      case 3:
+        segmentData = (chainTo==-1) ? digitToSegment28[11] : digitToSegment28[(chainTo+1) % 10];
+        break;
+      case 4:
+        segmentData = (chainTo==-1) ? digitToSegment28[11] : digitToSegment28[(chainTo+1) / 10];
+        break;          
+    }
+    write595byte(digitData, MSBFIRST);
+    write595byte(segmentData, MSBFIRST);
+  }
+
+
+public:
+
+  SongManagerUI(Channel (&partsArray)[PARTS]) 
+    : programBtn(PROGRAM_BTN), 
+      loadBtn(LOAD_BTN), 
+      nextSongBtn(NEXT_SONG_BTN), 
+      prevSongBtn(PREV_SONG_BTN),
+      parts(partsArray),
+      lastScan(0) { }
+
+
+  void begin() {
+    pinMode(LED_CLK, OUTPUT);
+    pinMode(LED_DATA, OUTPUT);
+    pinMode(LED_LATCH, OUTPUT);
+
+    pinMode(BTN_LOAD, OUTPUT);
+    pinMode(BTN_CLK, OUTPUT);
+    pinMode(BTN_DATA, INPUT);
+    pinMode(BTN_LATCH, OUTPUT);
+  }
+
+  void scan(unsigned long now) {
+    if (now > (lastScan + SCAN_INTERVAL)) {
+      lastScan = now;
+      scanInputs();
+    }    
+  }
+
+  void update(unsigned long now) {
+    for(int digit=0; digit<DIGITS; digit++) {
+
+      updateOperationsBoardDigit(digit, selectedSongNumber);
+      for(int partIndex=0; partIndex<PARTS; partIndex++) {
+        updatePartDigit(partIndex, digit);
+      }
+      digitalWrite(LED_LATCH, LOW);
+      digitalWrite(LED_LATCH, HIGH);
+      digitalWrite(LED_LATCH, LOW);
+
+    }
+  }
+
+};
+
+#endif
