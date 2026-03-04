@@ -38,8 +38,11 @@
 #define PROGRAMMER_LED_B 4 // DIG3
 
 
-#define SCAN_INTERVAL 50
+#define UPDATE_INTERVAL 1 
+#define SCAN_INTERVAL 50  
 #define DIGITS 5
+#define LED_SHORT_PULSE 300
+#define LED_VERY_SHORT_PULSE 25
 
 
 class SongManagerUI {
@@ -51,7 +54,13 @@ private:
   DebounceButton165 prevSongBtn;
   Channel (&parts)[PARTS];
 
+  unsigned long lastUpdate;
   unsigned long lastScan;
+  unsigned long lastProgrammingLed = 0;
+  unsigned long lastSongLoadingLed = 0;
+  unsigned long lastSongLoading = 0;
+  unsigned long lastSongBlink = 0;
+  unsigned long lastClockInLed = 0;  
   bool blinkSongNumber;
   bool programmingLed;
   bool songIsLoading;
@@ -59,11 +68,117 @@ private:
   bool programming;
   bool clockInLed;
 
-  int selectedSongNumber = 4;
+  int selectedSongNumber;
+  int prevSongNumber;
+
+  void (*songNumberSelectedCallback)(const int) = nullptr;
+  void (*programmingStartedCallback)(const int) = nullptr;
+  void (*programmingEndedCallback)(const int) = nullptr;
+  void (*programmingCancelledCallback)(const int) = nullptr;
 
 
-  void scanInputs() {
+  uint8_t read165byte() {
+    uint8_t value = 0;
+    for (int i = 0; i < 8; i++) {
+      digitalWrite(BTN_CLK, LOW);      // prepare falling edge
+      if (digitalRead(BTN_DATA)) {
+        value |= (1 << i);               // store bit in LSB first
+      }
+      digitalWrite(BTN_CLK, HIGH);     // shift register updates here
+    }
+    return value;
+  }  
 
+  void scanOperationsBoard(unsigned long now) {
+    uint8_t incoming = read165byte();
+    //printByteln(incoming);
+    if(incoming == 0xFF) return;
+
+    programBtn.update(incoming, now);
+    loadBtn.update(incoming, now);
+    if(!programming) {
+      nextSongBtn.update(incoming, now);
+      prevSongBtn.update(incoming, now);
+    }
+
+    // NEXT SONG INDEX
+    if(!programming && nextSongBtn.wasPressed() && !prevSongBtn.isDown()) {
+      if(selectedSongNumber < MAX_SONGS-2)
+        selectedSongNumber++;
+      else
+        selectedSongNumber=1;
+    }
+    // PREV SONG INDEX
+    if(!programming && prevSongBtn.wasPressed() && !nextSongBtn.isDown()) {
+      if(selectedSongNumber > 1)
+        selectedSongNumber--;
+      else
+        selectedSongNumber = MAX_SONGS;
+    }
+    // LOAD SONG
+    if(!programming && loadBtn.wasPressed()) { 
+      songIsLoading = true;
+      songLoadingLed = true;
+      lastSongLoading = now;
+      prevSongNumber = selectedSongNumber;
+      if(songNumberSelectedCallback) songNumberSelectedCallback(selectedSongNumber);
+    }    
+    // CANCEL LOAD SONG
+    if(songIsLoading && loadBtn.wasPressed()) {
+      songIsLoading = false;
+      songLoadingLed = true;
+      selectedSongNumber = prevSongNumber;
+      if(songNumberSelectedCallback) songNumberSelectedCallback(selectedSongNumber);
+    }
+    // CANCEL PROGRAMMING
+    if(programming && loadBtn.wasPressed()) { 
+      programming = false;
+      programmingLed = false;
+      if(programmingCancelledCallback)programmingCancelledCallback(selectedSongNumber);
+    }    
+    if(!songIsLoading && programBtn.wasPressed()) { 
+    // START PROGRAMMING
+      if(!programming) {                      
+        programming = true;
+        if(programmingStartedCallback)programmingStartedCallback(selectedSongNumber);
+      } else { 
+    // END PROGRAMMING                          
+        programming = false;
+        if(programmingEndedCallback)programmingEndedCallback(selectedSongNumber);
+      }
+    } 
+  }  
+
+  void scanChannelBoards(unsigned long now) {
+    uint8_t incoming = 0;
+    for(int i=0; i<PARTS; i++) {
+      if(i % 8 == 0) {// only read 1 165 pr 8 parts
+        incoming = read165byte();
+        //printByteln(incoming);
+        if(incoming == 0xFF) return;
+      }
+
+      parts[i].Button()->update(incoming, now);
+      if(parts[i].Button()->wasPressed()) {
+        Serial.print("Button pressed: ");
+        Serial.println(i);
+      }      
+    }
+  }
+
+  void scanInputs(unsigned long now) {
+    digitalWrite(BTN_LOAD, LOW);
+    delayMicroseconds(5);
+    digitalWrite(BTN_LOAD, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(BTN_CLK, HIGH);
+    digitalWrite(BTN_LATCH, LOW);
+
+    // read data here
+    scanOperationsBoard(now);
+    scanChannelBoards(now);
+
+    digitalWrite(BTN_LATCH, HIGH);
   }
 
   void write595byte(uint8_t data, uint8_t bitOrder = LSBFIRST) {
@@ -121,7 +236,7 @@ private:
   }
 
 
-  void updateOperationsBoardDigit(int digit, int songNumber) {
+  void updateOperationsBoardDigit(int digit) {
 
     /*
     * 1st 595:          2nd 595:
@@ -137,7 +252,7 @@ private:
     uint8_t data[2] = {0};
     int index = (digit % 2 == 0) ? 1 : 0; // we have only 2 digits in the ops board, so whatever digit value comes in, we want to determine which of the 2 digits we are updating
 
-    int digitVal = getDigit(songNumber, index);
+    int digitVal = getDigit(selectedSongNumber, index);
     data[0] = (blinkSongNumber) ? 0x00 : digitToSegment[digitVal];
     data[1] = digitEnable[index];
 
@@ -225,8 +340,26 @@ public:
       nextSongBtn(NEXT_SONG_BTN), 
       prevSongBtn(PREV_SONG_BTN),
       parts(partsArray),
-      lastScan(0) { }
+      lastUpdate(0),
+      lastScan(0),
+      selectedSongNumber(0),
+      prevSongNumber(0) { }
 
+  void onSongNumberSelected(void (*callback)(const int)) {
+    songNumberSelectedCallback = callback;
+  }
+
+  void onProgrammingStarted(void (*callback)(const int)) {
+    programmingStartedCallback = callback;
+  }
+
+  void onProgrammingEnded(void (*callback)(const int)) {
+    programmingEndedCallback = callback;
+  }  
+
+  void onProgrammingCancelled(void (*callback)(const int)) {
+    programmingCancelledCallback = callback;
+  }  
 
   void begin() {
     pinMode(LED_CLK, OUTPUT);
@@ -242,21 +375,45 @@ public:
   void scan(unsigned long now) {
     if (now > (lastScan + SCAN_INTERVAL)) {
       lastScan = now;
-      scanInputs();
+      scanInputs(now);
     }    
   }
 
-  void update(unsigned long now) {
-    for(int digit=0; digit<DIGITS; digit++) {
+  void endSongLoading() {
+    songIsLoading = false;
+    songLoadingLed = true;
+  }
 
-      updateOperationsBoardDigit(digit, selectedSongNumber);
+  void update(unsigned long now) {
+    if((songIsLoading || prevSongNumber != selectedSongNumber) && now > (lastSongBlink + LED_SHORT_PULSE)) {
+      blinkSongNumber = !blinkSongNumber;
+      lastSongBlink = now;
+    }
+
+    if(prevSongNumber == selectedSongNumber)
+      blinkSongNumber = false;
+
+    if(programming && now > (lastProgrammingLed + LED_SHORT_PULSE)) {
+      programmingLed = !programmingLed;
+      lastProgrammingLed = now;
+    }
+
+    if(songIsLoading && now > (lastSongLoadingLed + LED_SHORT_PULSE)) {
+      songLoadingLed = !songLoadingLed;
+      lastSongLoadingLed = now;
+    }
+
+
+    for(int digit=0; digit<DIGITS; digit++) {
+      digitalWrite(LED_LATCH, LOW);
+      delayMicroseconds(5);
+
+      updateOperationsBoardDigit(digit);
       for(int partIndex=0; partIndex<PARTS; partIndex++) {
         updatePartDigit(partIndex, digit);
       }
-      digitalWrite(LED_LATCH, LOW);
       digitalWrite(LED_LATCH, HIGH);
-      digitalWrite(LED_LATCH, LOW);
-
+      delayMicroseconds(10);
     }
   }
 

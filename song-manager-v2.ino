@@ -34,32 +34,8 @@ Channel parts[PARTS];
 SongManagerUI ui(parts);
 
 
-
-bool songLoading = false;
-bool songLoaded = false;
-unsigned long lastSongLoadingLed = 0;
-bool songLoadedLed = false;
-uint8_t songLoadedPattern = 0b01000000;
-
-
-bool instructionLed = false;
-unsigned long lastInstructionLed = 0;
-uint8_t instructionLedPattern = 0b00100000;
-
-
 unsigned long now = 0;
-unsigned long lastRequest = 0;
-unsigned long lastInputScan = 0;
-unsigned long lastPartIndexChange = 0;
-unsigned long lastCurrentStepChange = 0;
-
-int currentPartIndex = 0;
 int currentStep = 0;
-
-uint8_t valueFromSlave = 0;
-uint8_t buttonsArrayValue = 0;
-uint8_t ledPattern = 0;
-
 
 
 void printStructureSizes() {
@@ -104,6 +80,10 @@ void setup() {
   Serial.begin(115200);
 
   // ui
+  ui.onSongNumberSelected(onSongNumberSelected);
+  ui.onProgrammingStarted(onProgrammingStarted);
+  ui.onProgrammingEnded(onProgrammingEnded);
+  ui.onProgrammingCancelled(onProgrammingCancelled);
   ui.begin();
 
   // parts
@@ -175,6 +155,31 @@ void setup() {
   printStructureSizes();
 }
 
+void onSongNumberSelected(int songNumber) {
+  Serial.print("Song number selected: ");
+  Serial.println(songNumber);
+
+  loadSong = master.sendSongParts(currentSong);
+  
+  Serial.println("LOADING SONG");
+  printInstructionPackage(loadSong);  
+}
+
+void onProgrammingStarted(int songNumber) {
+  Serial.print("Programming started for song number: ");
+  Serial.println(songNumber);
+}
+
+void onProgrammingEnded(int songNumber) {
+  Serial.print("Programming ended for song number: ");
+  Serial.println(songNumber);
+}
+
+void onProgrammingCancelled(int songNumber) {
+  Serial.print("Programming cancelled for song number: ");
+  Serial.println(songNumber);
+}
+
 void onBeforePartCompleted(uint8_t partIndex, int8_t chainToPart) {
 }
 
@@ -198,8 +203,6 @@ void onInstructionCancelled(long traceId, uint8_t slaveAddress, Instruction inst
 
   if(traceId == loadSong.getTraceId()) {
     loadSong.clear();
-    songLoading = false;
-    songLoaded = false;
   }  
 }
 
@@ -209,8 +212,8 @@ void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instr
   sprintf(s, "instruction completed => %d  slave:%d  part-index: %d  trace-id: %ld", instruction, slaveAddress, partIndex, traceId);
   Serial.println(s);
 
-  instructionLed = true;
-  lastInstructionLed = now;
+  // instructionLed = true;
+  // lastInstructionLed = now;
 
   if(traceId == loadSong.getTraceId()) {
     loadSong.markCompleted(slaveAddress, instruction, partIndex);
@@ -220,8 +223,7 @@ void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instr
     if(loadSong.isComplete()) {
       Serial.println("SONG LOADED");
       loadSong.clear();
-      songLoading = false;
-      songLoaded = true;
+      ui.endSongLoading();
     }
   }
 }
@@ -337,7 +339,7 @@ void loop() {
 
 
   for(int i=0; i<PARTS; i++) {
-
+   
     parts[i].SetPageCount(2);
     parts[i].SetChainTo(-1);
     parts[i].SetRepeats(1);
