@@ -2,8 +2,10 @@
 #define SongManagerUI_h
 
 #include "Common.h"
+#include "Models.h"
 #include "Channel.h"
 #include "DebounceButton165.h"
+#include "AnalogMuxScanner.h"
 
 // all led outputs via 74HC595
 #define LED_CLK 2  // => 595/11
@@ -23,7 +25,7 @@
 #define MUX_S0   28
 #define MUX_S1   29
 #define MUX_S2   30
-#define MUX_S3   31
+#define MUX_S3   31 // nc
 
 // operations board input bit mask
 #define PROGRAM_BTN 0
@@ -40,6 +42,7 @@
 
 #define UPDATE_INTERVAL 1 
 #define SCAN_INTERVAL 50  
+#define POT_SCAN_INTERVAL 5
 #define DIGITS 5
 #define LED_SHORT_PULSE 300
 #define LED_VERY_SHORT_PULSE 25
@@ -53,6 +56,7 @@ private:
   DebounceButton165 nextSongBtn;
   DebounceButton165 prevSongBtn;
   Channel (&parts)[PARTS];
+  AnalogMuxScanner analogPotBank1;
 
   unsigned long lastUpdate;
   unsigned long lastScan;
@@ -61,6 +65,7 @@ private:
   unsigned long lastSongLoading = 0;
   unsigned long lastSongBlink = 0;
   unsigned long lastClockInLed = 0;  
+  unsigned long lastPotScan = 0;
   bool blinkSongNumber;
   bool programmingLed;
   bool songIsLoading;
@@ -75,7 +80,10 @@ private:
   void (*programmingStartedCallback)(const int) = nullptr;
   void (*programmingEndedCallback)(const int) = nullptr;
   void (*programmingCancelledCallback)(const int) = nullptr;
+  void (*partProgrammingChangedCallback)(const int, Channel) = nullptr; // partIndexm channel
 
+
+  static SongManagerUI* instance;
 
   uint8_t read165byte() {
     uint8_t value = 0;
@@ -331,6 +339,29 @@ private:
     write595byte(segmentData, MSBFIRST);
   }
 
+  static void staticAnalogPotChangedHandler(int partIndex, int pot, uint16_t value) {
+    if (instance) {
+      instance->onAnalogPotChangedHandler(partIndex, pot, value);
+    }
+  }  
+
+  void onAnalogPotChangedHandler(int partIndex, int pot, uint16_t value) {
+    // ###handle bad pots###
+    if(partIndex == 2 && pot == 0) return;
+    if(partIndex == 4 && pot == 1) return;
+    if(partIndex == 6 && pot == 0) return;
+
+    if(pot==0) {
+      parts[partIndex].SetPageCountRaw(value);
+    } else if(pot==1) {
+      parts[partIndex].SetRepeatsRaw(value);
+    } else if(pot==2) {
+      parts[partIndex].SetChainToRaw(value);
+    }
+
+    if(partProgrammingChangedCallback)
+      partProgrammingChangedCallback(partIndex, parts[partIndex]);
+  }
 
 public:
 
@@ -340,10 +371,13 @@ public:
       nextSongBtn(NEXT_SONG_BTN), 
       prevSongBtn(PREV_SONG_BTN),
       parts(partsArray),
+      analogPotBank1(MUX_S0, MUX_S1, MUX_S2, A10, A11, A12, PARTS),
       lastUpdate(0),
       lastScan(0),
       selectedSongNumber(0),
-      prevSongNumber(0) { }
+      prevSongNumber(0) {
+        instance = this;
+      }
 
   void onSongNumberSelected(void (*callback)(const int)) {
     songNumberSelectedCallback = callback;
@@ -361,6 +395,10 @@ public:
     programmingCancelledCallback = callback;
   }  
 
+  void onPartProgrammingChanged(void (*callback)(const int, Channel)) {
+    partProgrammingChangedCallback = callback;
+  }
+
   void begin() {
     pinMode(LED_CLK, OUTPUT);
     pinMode(LED_DATA, OUTPUT);
@@ -370,13 +408,22 @@ public:
     pinMode(BTN_CLK, OUTPUT);
     pinMode(BTN_DATA, INPUT);
     pinMode(BTN_LATCH, OUTPUT);
+
+    analogPotBank1.onChange(SongManagerUI::staticAnalogPotChangedHandler);
+    analogPotBank1.setHysteresis(10);
+    analogPotBank1.setSamplesPerRead(5);
+    analogPotBank1.begin();    
   }
 
   void scan(unsigned long now) {
-    if (now > (lastScan + SCAN_INTERVAL)) {
+    if(now > (lastScan + SCAN_INTERVAL)) {
       lastScan = now;
       scanInputs(now);
-    }    
+    }
+    if(programming && now > (lastPotScan + POT_SCAN_INTERVAL)) {
+      lastPotScan = now;
+      analogPotBank1.scan(now);
+    }
   }
 
   void endSongLoading() {
@@ -418,5 +465,7 @@ public:
   }
 
 };
+
+SongManagerUI* SongManagerUI::instance = nullptr;
 
 #endif

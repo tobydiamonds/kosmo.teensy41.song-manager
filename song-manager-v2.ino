@@ -21,10 +21,11 @@
 
 //const int chipSelect = BUILTIN_SDCARD;
 
-DrumSequencerSlave drumSequencer(8);
+DrumSequencerSlave drumSequencerSlave(9);
+ClockSlave clockSlave(8);
 
-I2CSlave* slaves[] = {&drumSequencer};
-KosmoMasterI2CService master(slaves, 1);
+I2CSlave* slaves[] = {&clockSlave,&drumSequencerSlave};
+KosmoMasterI2CService master(slaves, 2);
 EXTMEM AutomationController automationController;
 
 EXTMEM Song currentSong;
@@ -84,6 +85,7 @@ void setup() {
   ui.onProgrammingStarted(onProgrammingStarted);
   ui.onProgrammingEnded(onProgrammingEnded);
   ui.onProgrammingCancelled(onProgrammingCancelled);
+  ui.onPartProgrammingChanged(onPartProgrammingChanged);
   ui.begin();
 
   // parts
@@ -178,6 +180,13 @@ void onProgrammingEnded(int songNumber) {
 void onProgrammingCancelled(int songNumber) {
   Serial.print("Programming cancelled for song number: ");
   Serial.println(songNumber);
+}
+
+void onPartProgrammingChanged(const int partIndex, Channel part) {
+
+  currentSong.parts[partIndex].pages = part.PageCount();
+  currentSong.parts[partIndex].repeats = part.Repeats();
+  currentSong.parts[partIndex].chainTo = part.ChainTo();
 }
 
 void onBeforePartCompleted(uint8_t partIndex, int8_t chainToPart) {
