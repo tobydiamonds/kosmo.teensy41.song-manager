@@ -10,6 +10,8 @@
 #define MAX_AUTOMATION_SEQUENCES_PR_PART 5
 #define MAX_AUTOMATIONS_PR_SEQUENCE 1000
 #define MAX_SONGS 99
+#define MAX_QUEUE_SIZE 10
+#define MAX_INSTRUCTION_PACKAGE_SIZE 50
 
 
 
@@ -67,7 +69,7 @@ struct InstructionWrapper {
   long traceId;
 };
 
-#define MAX_QUEUE_SIZE 10
+
 
 class InstructionQueue {
 private:
@@ -120,7 +122,6 @@ public:
   }
 };
 
-#define MAX_INSTRUCTION_PACKAGE_SIZE 10
 
 struct InstructionPackageItem {
   Instruction opcode;

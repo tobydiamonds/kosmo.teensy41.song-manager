@@ -58,7 +58,7 @@ private:
       
       if (result != 0) {
         Serial.print("Error while sending data to slave at address ");
-        Serial.print(slave->getAddress(), HEX);
+        Serial.print(slave->getAddress());
         Serial.print(" error code: ");
         Serial.println(result);
         return false;

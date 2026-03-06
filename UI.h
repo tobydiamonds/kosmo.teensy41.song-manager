@@ -80,7 +80,8 @@ private:
   void (*programmingStartedCallback)(const int) = nullptr;
   void (*programmingEndedCallback)(const int) = nullptr;
   void (*programmingCancelledCallback)(const int) = nullptr;
-  void (*partProgrammingChangedCallback)(const int, Channel) = nullptr; // partIndexm channel
+  void (*partProgrammingChangedCallback)(const int, Channel) = nullptr; // partIndex, channel
+  void (*partButtonPressedCallback)(const int, Channel, bool, bool) = nullptr; // partIndex, channel, programming, songloading
 
 
   static SongManagerUI* instance;
@@ -170,6 +171,8 @@ private:
       if(parts[i].Button()->wasPressed()) {
         Serial.print("Button pressed: ");
         Serial.println(i);
+        if(partButtonPressedCallback)
+          partButtonPressedCallback(i, parts[i], programming, songIsLoading);
       }      
     }
   }
@@ -377,7 +380,12 @@ public:
       selectedSongNumber(0),
       prevSongNumber(0) {
         instance = this;
+        lastClockInLed = 0;
       }
+
+  void setLastClock(unsigned long now) {
+    lastClockInLed = now;
+  }
 
   void onSongNumberSelected(void (*callback)(const int)) {
     songNumberSelectedCallback = callback;
@@ -397,6 +405,10 @@ public:
 
   void onPartProgrammingChanged(void (*callback)(const int, Channel)) {
     partProgrammingChangedCallback = callback;
+  }
+
+  void onPartButtonPressed(void (*callback)(const int, Channel, bool, bool)) {
+    partButtonPressedCallback = callback;
   }
 
   void begin() {
@@ -450,6 +462,9 @@ public:
       lastSongLoadingLed = now;
     }
 
+    if(now >(lastClockInLed + LED_SHORT_PULSE)) {
+      clockInLed = false;
+    }
 
     for(int digit=0; digit<DIGITS; digit++) {
       digitalWrite(LED_LATCH, LOW);
@@ -462,6 +477,10 @@ public:
       digitalWrite(LED_LATCH, HIGH);
       delayMicroseconds(10);
     }
+  }
+
+  void reset() {
+
   }
 
 };

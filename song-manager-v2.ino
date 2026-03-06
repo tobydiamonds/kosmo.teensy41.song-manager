@@ -21,22 +21,36 @@
 
 //const int chipSelect = BUILTIN_SDCARD;
 
-DrumSequencerSlave drumSequencerSlave(9);
 ClockSlave clockSlave(8);
+DrumSequencerSlave drumSequencerSlave(9);
+SamplerSlave samplerSlave(10);
 
-I2CSlave* slaves[] = {&clockSlave,&drumSequencerSlave};
+
+I2CSlave* slaves[] = {&clockSlave, &drumSequencerSlave};
 KosmoMasterI2CService master(slaves, 2);
 EXTMEM AutomationController automationController;
 
 EXTMEM Song currentSong;
 InstructionPackage loadSong;
 
-Channel parts[PARTS];
+EXTMEM Channel parts[PARTS];
 SongManagerUI ui(parts);
 
 
 unsigned long now = 0;
+unsigned long lastClockPulse = 0;
+bool edgeDetected = false;
+bool hasPulse = false;
+bool reset = false;
+
+int ppqnCounter = 0;
 int currentStep = 0;
+int currentPartIndex = 0;
+
+bool partCompleted = false;
+int completedPartIndex = -1;
+bool chainToNextPart = false;
+int nextPartIndex = -1;
 
 
 void printStructureSizes() {
@@ -86,6 +100,7 @@ void setup() {
   ui.onProgrammingEnded(onProgrammingEnded);
   ui.onProgrammingCancelled(onProgrammingCancelled);
   ui.onPartProgrammingChanged(onPartProgrammingChanged);
+  ui.onPartButtonPressed(onPartButtonPressed);
   ui.begin();
 
   // parts
@@ -97,6 +112,9 @@ void setup() {
     parts[i].OnPartStopped(onPartStopped);
   }
 
+  // clock in
+  pinMode(CLOCK_IN_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), onClockPulse, RISING);
 
   // Initialize the SD card
   // if (!SD.begin(chipSelect)) {
@@ -173,29 +191,85 @@ void onProgrammingStarted(int songNumber) {
 }
 
 void onProgrammingEnded(int songNumber) {
-  Serial.print("Programming ended for song number: ");
-  Serial.println(songNumber);
+  // copy all part data into song parts
+  for(int i=0; i<PARTS; i++) {
+    currentSong.parts[i].pages = parts[i].PageCount();
+    currentSong.parts[i].repeats = parts[i].Repeats();
+    currentSong.parts[i].chainTo = parts[i].ChainTo();
+    currentSong.parts[i].clockData = parts[i].GetClockPart();
+    currentSong.parts[i].drumSequencerData = parts[i].GetDrumSequencerPart();
+    currentSong.parts[i].samplerData = parts[i].GetSamplerPart();
+  }
+  // save the song on SD card
 }
 
 void onProgrammingCancelled(int songNumber) {
-  Serial.print("Programming cancelled for song number: ");
-  Serial.println(songNumber);
+  // revert part data from current song
+  for(int i=0; i<PARTS; i++) {
+    parts[i].SetPageCount(currentSong.parts[i].pages);
+    parts[i].SetRepeats(currentSong.parts[i].repeats);
+    parts[i].SetChainTo(currentSong.parts[i].chainTo);
+    parts[i].SetClockPart(currentSong.parts[i].clockData);
+    parts[i].SetDrumSequencerPart(currentSong.parts[i].drumSequencerData);
+    parts[i].SetSamplerPart(currentSong.parts[i].samplerData);
+  }  
+}
+
+void onPartButtonPressed(const int partIndex, Channel part, bool programming, bool songIsLoading) {
+  if(songIsLoading) return;
+  if(programming && part.PageCount()==0) { 
+    // when we click the button for a part that is not in use we want to initialize slaves with default values to simplify starting a new part
+    part.SetClockPart(InitClockPart());
+    part.SetDrumSequencerPart(InitDrumSequencerPart());
+    part.SetSamplerPart(InitSamplerPart());    
+  } else if (programming) {
+    // get data from slaves and store in parts
+    Part incoming;
+    incoming = master.retrievePartFromSlaves();
+
+    part.SetClockPart(incoming.clockData);
+    part.SetDrumSequencerPart(incoming.drumSequencerData);
+    part.SetSamplerPart(incoming.samplerData);
+  } else if(parts[currentPartIndex].IsStarted()) {
+    // set part that were pressed as next part to the current part
+    parts[currentPartIndex].SetChainTo(partIndex);
+  } else {
+    // send part to slaves
+    master.sendCurrentPartIndex(partIndex);
+    master.sendInstruction(clockSlave.getAddress(), Instruction::Start);
+    part.Start();
+  }
 }
 
 void onPartProgrammingChanged(const int partIndex, Channel part) {
-
-  currentSong.parts[partIndex].pages = part.PageCount();
-  currentSong.parts[partIndex].repeats = part.Repeats();
-  currentSong.parts[partIndex].chainTo = part.ChainTo();
+// do we need this?
 }
 
 void onBeforePartCompleted(uint8_t partIndex, int8_t chainToPart) {
+  if(chainToPart == -1) return;
+  // send the next part index to slaves so they can prepare data on the next down beat
+  master.sendCurrentPartIndex(chainToPart);
 }
 
 void onPartCompleted(uint8_t partIndex, int8_t chainToPart) {
+  completedPartIndex = partIndex;
+  partCompleted = true;  
+
+  if(chainToPart == -1) {
+    // if not next part we want to stop the clock
+    master.sendInstruction(clockSlave.getAddress(), Instruction::Stop);
+    Serial.println("no chain - stopping the clock");
+    chainToNextPart = false;
+    nextPartIndex = -1;
+  } else {
+    // otherwise we want to chain to the next part 
+    nextPartIndex = chainToPart;
+    chainToNextPart = true;
+  }
 }
 
 void onPartStarted(uint8_t partIndex) {
+  currentPartIndex = partIndex;
 }
 
 void onPartStopped(uint8_t partIndex) {
@@ -267,10 +341,74 @@ void updateUI(uint8_t data) {
   digitalWrite(LED_LATCH, LOW);
 }
 
+bool AnyPartsPlaying() {
+  for(int i=0; i<PARTS; i++) {
+    if(parts[i].IsStarted()) return true;
+  }
+  return false;
+}
+
+void onClockPulse() {
+  lastClockPulse = now;  
+  edgeDetected = true;
+  hasPulse = true;
+}
+
+void triggerClockPulse() {
+  ppqnCounter = (ppqnCounter + 1) % 24;
+  for(int i=0; i<PARTS; i++)
+    parts[i].Pulse(ppqnCounter);
+  if(ppqnCounter == 0) {
+    ui.setLastClock(now);
+  }
+}
+
 void loop() {
   now = millis();
 
+  // handle reset
+  if(now > (lastClockPulse + 2000) && hasPulse) {
+    reset = true;
+    hasPulse = false;
+  }
+
+  if(reset) {
+    reset = false;
+    ppqnCounter = 0;
+    for(int i=0; i<PARTS; i++) {
+      parts[i].Reset();
+    }
+    currentPartIndex = 0;
+    ui.reset();
+    Serial.println("reset!");
+  }
+
+  // handle clock in
+  if(edgeDetected) {
+    edgeDetected = false;
+    if(!AnyPartsPlaying())
+      parts[currentPartIndex].Start();
+    triggerClockPulse();
+  }  
+
+  if(partCompleted && ppqnCounter == 0 && completedPartIndex >= 0) {
+    partCompleted = false;
+    parts[completedPartIndex].Stop();
+  }
+
+  if(chainToNextPart && ppqnCounter == 0 && nextPartIndex >= 0) {
+    chainToNextPart = false;
+    parts[nextPartIndex].Start();
+  }
+
   ui.scan(now);
+  automationController.run(now, currentStep);
+  master.run(now);
+
+  for(int i=0; i<PARTS; i++) {
+    parts[i].Run(now);  
+  }
+  ui.update(now);   
 
   // if(now > (lastCurrentStepChange + 128)) {
   //   lastCurrentStepChange = now;
@@ -318,8 +456,7 @@ void loop() {
   //   currentPartIndex++;
   // }
 
-  automationController.run(now, currentStep);
-  master.run(now);
+ 
 
   // if(songLoaded) {
   //   songLoadedLed = true;
@@ -347,16 +484,7 @@ void loop() {
   // updateUI(ledPattern);
 
 
-  for(int i=0; i<PARTS; i++) {
-   
-    parts[i].SetPageCount(2);
-    parts[i].SetChainTo(-1);
-    parts[i].SetRepeats(1);
 
-    parts[i].Run(now);  
-  }
-
-  ui.update(now);
 }
 
 

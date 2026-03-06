@@ -34,6 +34,36 @@ struct Automation {
 };
 #pragma pack(pop)
 
+ClockPart InitClockPart() {
+  ClockPart init;
+  init.bpm = 120;
+  init.morphTargetBpm = 100;
+  init.morphBars = 4;
+  init.morphEnabled = false;
+  return init;  
+}
+
+DrumSequencerPart InitDrumSequencerPart() {
+  DrumSequencerPart init;
+  init.chainModeEnabled = 0;
+  for(int i=0; i<DRUM_CHANNELS; i++) {
+    init.channel[i].divider = 6;
+    init.channel[i].lastStep = 15;
+    init.channel[i].enabled = 1;
+  }
+  init.channel[0].page[0] = 0x8888;
+  return init;  
+}
+
+SamplerPart InitSamplerPart() {
+  SamplerPart init;
+  init.bank = 0;
+  for(int i=0; i<5; i++) {
+    init.mix[i] = 800;
+  }
+  return init;  
+}
+
 struct AutomationSequence {
   uint8_t startStep;
   uint8_t interval;

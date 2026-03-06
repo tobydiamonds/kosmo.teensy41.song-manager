@@ -36,6 +36,11 @@ private:
   PartStarted _onPartStarted = nullptr;
   PartStopped _onPartStopped = nullptr;
 
+  // part data
+  ClockPart clock;
+  DrumSequencerPart drumSequencer; 
+  SamplerPart sampler;
+
 public:
   Channel() {
     _channelNumber = 0;
@@ -231,6 +236,30 @@ public:
     else
       Serial.print("0");
     Serial.println();
+  }
+
+  void SetClockPart(ClockPart part) {
+    clock = part;
+  }
+
+  ClockPart GetClockPart() {
+    return clock;
+  }
+
+  void SetDrumSequencerPart(DrumSequencerPart part) {
+    drumSequencer = part;
+  }
+
+  DrumSequencerPart GetDrumSequencerPart() {
+    return drumSequencer;
+  }
+
+  void SetSamplerPart(SamplerPart part) {
+    sampler = part;
+  }
+
+  SamplerPart GetSamplerPart() {
+    return sampler;
   }
 };
 
