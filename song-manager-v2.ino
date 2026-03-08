@@ -7,7 +7,7 @@
 #include "I2CSlave.h"
 #include "KosmoMasterI2CService.h"
 #include "AutomationController.h"
-#include "UI.h"
+#include "ui.h"
 #include "Channel.h"
 
 #define CLOCK_IN_PIN 12
@@ -15,7 +15,7 @@
 // these pins are connected to the pinheader, but not in use
 #define NOT_USED_2 9
 #define NOT_USED_3 10
-#define NOT_USED_4 11
+
 #define NOT_USED_6 27 // analog pin
 
 
@@ -34,7 +34,7 @@ EXTMEM Song currentSong;
 InstructionPackage loadSong;
 
 EXTMEM Channel parts[PARTS];
-SongManagerUI ui(parts);
+SongManagerUI* ui;
 
 
 unsigned long now = 0;
@@ -93,16 +93,6 @@ void setup() {
 
   //Wire.begin();
   Serial.begin(115200);
-
-  // ui
-  ui.onSongNumberSelected(onSongNumberSelected);
-  ui.onProgrammingStarted(onProgrammingStarted);
-  ui.onProgrammingEnded(onProgrammingEnded);
-  ui.onProgrammingCancelled(onProgrammingCancelled);
-  ui.onPartProgrammingChanged(onPartProgrammingChanged);
-  ui.onPartButtonPressed(onPartButtonPressed);
-  ui.begin();
-
   // parts
   for(int i=0; i<PARTS; i++) {
     parts[i] = Channel(i, 7-i); // first parameter: channel nummber, second parameter: bit index of the channel button from 595
@@ -111,6 +101,16 @@ void setup() {
     parts[i].OnPartStarted(onPartStarted);
     parts[i].OnPartStopped(onPartStopped);
   }
+
+  // ui
+  ui = new SongManagerUI(parts);  
+  ui->onSongNumberSelected(onSongNumberSelected);
+  ui->onProgrammingStarted(onProgrammingStarted);
+  ui->onProgrammingEnded(onProgrammingEnded);
+  ui->onProgrammingCancelled(onProgrammingCancelled);
+  ui->onPartProgrammingChanged(onPartProgrammingChanged);
+  ui->onPartButtonPressed(onPartButtonPressed);
+  ui->begin();
 
   // clock in
   pinMode(CLOCK_IN_PIN, INPUT);
@@ -200,7 +200,7 @@ void onProgrammingEnded(int songNumber) {
     currentSong.parts[i].drumSequencerData = parts[i].GetDrumSequencerPart();
     currentSong.parts[i].samplerData = parts[i].GetSamplerPart();
   }
-  // save the song on SD card
+  // save the song
 }
 
 void onProgrammingCancelled(int songNumber) {
@@ -215,21 +215,32 @@ void onProgrammingCancelled(int songNumber) {
   }  
 }
 
-void onPartButtonPressed(const int partIndex, Channel part, bool programming, bool songIsLoading) {
+void onPartButtonPressed(const int partIndex, Channel channel, bool programming, bool songIsLoading) {
+  char s[100];
+  sprintf(s, "button pressed: %d  programming: %s  loading: %s", partIndex, programming ? "yes" : "no", songIsLoading ? "yes" : "no");
+  Serial.println(s);
   if(songIsLoading) return;
-  if(programming && part.PageCount()==0) { 
+  if(programming && channel.PageCount()==0) { 
     // when we click the button for a part that is not in use we want to initialize slaves with default values to simplify starting a new part
-    part.SetClockPart(InitClockPart());
-    part.SetDrumSequencerPart(InitDrumSequencerPart());
-    part.SetSamplerPart(InitSamplerPart());    
+    channel.SetPageCount(1);
+    channel.SetRepeats(4);
+    channel.SetChainTo(partIndex); // chain to self
+    channel.SetClockPart(InitClockPart());
+    channel.SetDrumSequencerPart(InitDrumSequencerPart());
+    channel.SetSamplerPart(InitSamplerPart());    
+    Serial.print("initialized channel: ");
+    Serial.println(partIndex);
+    channel.Print();
   } else if (programming) {
     // get data from slaves and store in parts
     Part incoming;
+    Serial.println("retreving data from slaves");
     incoming = master.retrievePartFromSlaves();
+    printSongPart(incoming, partIndex);
 
-    part.SetClockPart(incoming.clockData);
-    part.SetDrumSequencerPart(incoming.drumSequencerData);
-    part.SetSamplerPart(incoming.samplerData);
+    channel.SetClockPart(incoming.clockData);
+    channel.SetDrumSequencerPart(incoming.drumSequencerData);
+    channel.SetSamplerPart(incoming.samplerData);
   } else if(parts[currentPartIndex].IsStarted()) {
     // set part that were pressed as next part to the current part
     parts[currentPartIndex].SetChainTo(partIndex);
@@ -237,7 +248,7 @@ void onPartButtonPressed(const int partIndex, Channel part, bool programming, bo
     // send part to slaves
     master.sendCurrentPartIndex(partIndex);
     master.sendInstruction(clockSlave.getAddress(), Instruction::Start);
-    part.Start();
+    channel.Start();
   }
 }
 
@@ -306,39 +317,9 @@ void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instr
     if(loadSong.isComplete()) {
       Serial.println("SONG LOADED");
       loadSong.clear();
-      ui.endSongLoading();
+      ui->endSongLoading();
     }
   }
-}
-
-uint8_t scanInput() {
-  uint8_t incoming = 0;
-
-  digitalWrite(BTN_LOAD, LOW);
-  delayMicroseconds(5); // Small delay for load
-  digitalWrite(BTN_LOAD, HIGH);
-  delayMicroseconds(5); // Ensure load is complete
-
-  for(int i=0; i<8; i++) {
-    incoming <<= 1;
-    incoming |= digitalRead(BTN_DATA);
-    digitalWrite(BTN_CLK, HIGH);
-    delayMicroseconds(5); // Small delay for clock pulse
-    digitalWrite(BTN_CLK, LOW);
-    delayMicroseconds(5); // Ensure stable reading
-  }
-  return incoming;
-}
-
-
-void updateUI(uint8_t data) {
-
-  shiftOut(LED_DATA, LED_CLK, LSBFIRST, data);
-
-
-  digitalWrite(LED_LATCH, LOW);
-  digitalWrite(LED_LATCH, HIGH);
-  digitalWrite(LED_LATCH, LOW);
 }
 
 bool AnyPartsPlaying() {
@@ -359,7 +340,7 @@ void triggerClockPulse() {
   for(int i=0; i<PARTS; i++)
     parts[i].Pulse(ppqnCounter);
   if(ppqnCounter == 0) {
-    ui.setLastClock(now);
+    ui->setLastClock(now);
   }
 }
 
@@ -379,7 +360,7 @@ void loop() {
       parts[i].Reset();
     }
     currentPartIndex = 0;
-    ui.reset();
+    ui->reset();
     Serial.println("reset!");
   }
 
@@ -401,19 +382,14 @@ void loop() {
     parts[nextPartIndex].Start();
   }
 
-  ui.scan(now);
+  ui->scan(now);
   automationController.run(now, currentStep);
   master.run(now);
 
   for(int i=0; i<PARTS; i++) {
     parts[i].Run(now);  
   }
-  ui.update(now);   
-
-  // if(now > (lastCurrentStepChange + 128)) {
-  //   lastCurrentStepChange = now;
-  //   currentStep++;
-  // }
+  ui->update(now);   
 
   // if(now > (lastPartIndexChange + 2048)) {
   //   lastPartIndexChange = now;

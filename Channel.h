@@ -199,6 +199,7 @@ public:
 
   void SetRepeats(uint8_t repeats) {
     _repeats = repeats;
+    _remainingRepeats = repeats;
     _repeatsRaw = map(_repeats, 0, 32, 0, 1023);
   }
 

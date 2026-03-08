@@ -5,7 +5,7 @@
 #include "Models.h"
 #include "Channel.h"
 #include "DebounceButton165.h"
-#include "AnalogMuxScanner.h"
+#include "AnalogMuxScanner16.h"
 
 // all led outputs via 74HC595
 #define LED_CLK 2  // => 595/11
@@ -19,13 +19,14 @@
 #define BTN_LATCH 8// => 165/15
 
 // mux pins
-#define MUX_CH_1 24 // analog input for pots 1..16
-#define MUX_CH_2 25 // analog input for pots 17..32
-#define MUX_CH_3 26 // analog input for pots 33..48
+#define MUX_CH_1 24
+#define MUX_CH_2 25
+#define MUX_CH_3 26
 #define MUX_S0   28
 #define MUX_S1   29
 #define MUX_S2   30
-#define MUX_S3   31 // nc
+#define MUX_S3   31
+#define MUX_ENA  11
 
 // operations board input bit mask
 #define PROGRAM_BTN 0
@@ -40,9 +41,9 @@
 #define PROGRAMMER_LED_B 4 // DIG3
 
 
-#define UPDATE_INTERVAL 1 
+#define UPDATE_INTERVAL 1
 #define SCAN_INTERVAL 50  
-#define POT_SCAN_INTERVAL 5
+#define POT_SCAN_INTERVAL 10
 #define DIGITS 5
 #define LED_SHORT_PULSE 300
 #define LED_VERY_SHORT_PULSE 25
@@ -169,8 +170,6 @@ private:
 
       parts[i].Button()->update(incoming, now);
       if(parts[i].Button()->wasPressed()) {
-        Serial.print("Button pressed: ");
-        Serial.println(i);
         if(partButtonPressedCallback)
           partButtonPressedCallback(i, parts[i], programming, songIsLoading);
       }      
@@ -349,6 +348,9 @@ private:
   }  
 
   void onAnalogPotChangedHandler(int partIndex, int pot, uint16_t value) {
+    char s[100];
+    sprintf(s, "part: %d  pot: %d  value: %d", partIndex, pot, value);
+    Serial.println(s);
     // ###handle bad pots###
     if(partIndex == 2 && pot == 0) return;
     if(partIndex == 4 && pot == 1) return;
@@ -362,8 +364,8 @@ private:
       parts[partIndex].SetChainToRaw(value);
     }
 
-    if(partProgrammingChangedCallback)
-      partProgrammingChangedCallback(partIndex, parts[partIndex]);
+    // if(partProgrammingChangedCallback)
+    //   partProgrammingChangedCallback(partIndex, parts[partIndex]);
   }
 
 public:
@@ -374,7 +376,7 @@ public:
       nextSongBtn(NEXT_SONG_BTN), 
       prevSongBtn(PREV_SONG_BTN),
       parts(partsArray),
-      analogPotBank1(MUX_S0, MUX_S1, MUX_S2, A10, A11, A12, PARTS),
+      analogPotBank1(MUX_S0, MUX_S1, MUX_S2, MUX_S3, MUX_ENA, A10, A11, A12, PARTS),
       lastUpdate(0),
       lastScan(0),
       selectedSongNumber(0),
@@ -421,8 +423,18 @@ public:
     pinMode(BTN_DATA, INPUT);
     pinMode(BTN_LATCH, OUTPUT);
 
+    pinMode(MUX_S0, OUTPUT);
+    pinMode(MUX_S1, OUTPUT);
+    pinMode(MUX_S2, OUTPUT);
+    pinMode(MUX_S3, OUTPUT);
+
+    analogReadResolution(10);  // Set resolution to 10 bits
+    analogReadAveraging(4);    // Average over 4 samples for stability    
+
     analogPotBank1.onChange(SongManagerUI::staticAnalogPotChangedHandler);
     analogPotBank1.setHysteresis(10);
+    analogPotBank1.setPotHysteresis(4, 2, 30);
+    analogPotBank1.setPotHysteresis(6, 2, 20);
     analogPotBank1.setSamplesPerRead(5);
     analogPotBank1.begin();    
   }
@@ -436,6 +448,7 @@ public:
       lastPotScan = now;
       analogPotBank1.scan(now);
     }
+//    testMux();
   }
 
   void endSongLoading() {
@@ -466,9 +479,10 @@ public:
       clockInLed = false;
     }
 
+
     for(int digit=0; digit<DIGITS; digit++) {
       digitalWrite(LED_LATCH, LOW);
-      delayMicroseconds(5);
+      delayMicroseconds(50);
 
       updateOperationsBoardDigit(digit);
       for(int partIndex=0; partIndex<PARTS; partIndex++) {
@@ -482,6 +496,32 @@ public:
   void reset() {
 
   }
+
+  void testMux() {
+
+    int values[8] = {0};
+
+    for (int i = 0; i < 8; i++) {
+      digitalWrite(MUX_S0, (i & 0x01));
+      digitalWrite(MUX_S1, (i & 0x02) >> 1);
+      digitalWrite(MUX_S2, (i & 0x04) >> 2);
+      digitalWrite(MUX_S3, LOW);
+
+      delayMicroseconds(100);
+
+      values[i] = analogRead(A12);
+
+    }
+
+    char s[100];
+    sprintf(s, "%d  %d  %d", values[0], values[1], values[2]);
+    Serial.println(s);
+    sprintf(s, "%d  %d  %d", values[3], values[4], values[5]);
+    Serial.println(s);
+    sprintf(s, "%d  %d", values[6], values[7]);
+    Serial.println(s);        
+    Serial.println();
+  }  
 
 };
 
