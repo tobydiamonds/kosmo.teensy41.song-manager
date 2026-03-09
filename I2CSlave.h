@@ -139,7 +139,7 @@ public:
   }
 
   int getChunkTxInterval() override {
-    return 100;
+    return 0;
   }  
 
   int getRetryInterval() override {
@@ -164,7 +164,7 @@ public:
   }
 
   int getChunkTxInterval() override {
-    return 100;
+    return 0;
   }  
 
   int getRetryInterval() override {
@@ -189,7 +189,7 @@ public:
   }
 
   int getChunkTxInterval() override {
-    return 100;
+    return 0;
   }    
 
   int getRetryInterval() override {

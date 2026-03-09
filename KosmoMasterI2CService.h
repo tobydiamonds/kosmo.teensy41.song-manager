@@ -53,8 +53,8 @@ private:
       Wire.write(buffer, chunkSize + 2); // Send chunk size plus instruction byte and chunk index
       int result = Wire.endTransmission();
 
-      if(totalChunks > 0)
-        delay(slave->getChunkTxInterval());
+      // if(totalChunks > 0 && slave->getChunkTxInterval() > 0)
+      //   delay(slave->getChunkTxInterval());
       
       if (result != 0) {
         Serial.print("Error while sending data to slave at address ");

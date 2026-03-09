@@ -113,7 +113,7 @@ void setup() {
   ui->begin();
 
   // clock in
-  pinMode(CLOCK_IN_PIN, INPUT);
+  pinMode(CLOCK_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), onClockPulse, RISING);
 
   // Initialize the SD card
@@ -215,10 +215,11 @@ void onProgrammingCancelled(int songNumber) {
   }  
 }
 
-void onPartButtonPressed(const int partIndex, Channel channel, bool programming, bool songIsLoading) {
+void onPartButtonPressed(const int partIndex, Channel& channel, bool programming, bool songIsLoading) {
   char s[100];
   sprintf(s, "button pressed: %d  programming: %s  loading: %s", partIndex, programming ? "yes" : "no", songIsLoading ? "yes" : "no");
   Serial.println(s);
+  channel.Print();
   if(songIsLoading) return;
   if(programming && channel.PageCount()==0) { 
     // when we click the button for a part that is not in use we want to initialize slaves with default values to simplify starting a new part
@@ -300,14 +301,10 @@ void onInstructionCancelled(long traceId, uint8_t slaveAddress, Instruction inst
   }  
 }
 
-
 void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instruction, uint8_t partIndex) {
   char s[100];
   sprintf(s, "instruction completed => %d  slave:%d  part-index: %d  trace-id: %ld", instruction, slaveAddress, partIndex, traceId);
   Serial.println(s);
-
-  // instructionLed = true;
-  // lastInstructionLed = now;
 
   if(traceId == loadSong.getTraceId()) {
     loadSong.markCompleted(slaveAddress, instruction, partIndex);
@@ -329,16 +326,52 @@ bool AnyPartsPlaying() {
   return false;
 }
 
+#define DEBOUNCE_THRESHOLD 3000  // Microseconds
+#define MOVING_AVERAGE_SIZE 5
+unsigned long lastPulseTime = 0;
+unsigned long pulseInterval = 0;
+float bpmValues[MOVING_AVERAGE_SIZE];
+int bpmIndex = 0;
+
 void onClockPulse() {
-  lastClockPulse = now;  
-  edgeDetected = true;
+  unsigned long currentTime = micros();
+  pulseInterval = currentTime - lastPulseTime;
+
+  if (pulseInterval > DEBOUNCE_THRESHOLD) {
+    lastPulseTime = currentTime;
+    float currentBPM = (60000000.0 / pulseInterval) / 24;
+
+    // Store BPM in moving average array
+    bpmValues[bpmIndex] = currentBPM;
+    bpmIndex = (bpmIndex + 1) % MOVING_AVERAGE_SIZE;
+
+    // Calculate moving average
+    float bpmSum = 0.0;
+    for (int i = 0; i < MOVING_AVERAGE_SIZE; i++) {
+      bpmSum += bpmValues[i];
+    }
+    float averageBPM = bpmSum / MOVING_AVERAGE_SIZE;
+
+    // Check stability
+    if (abs(currentBPM - averageBPM) < 5.0) {  // Adjust threshold as needed
+      edgeDetected = true;
+      lastClockPulse = now;
+    } else {
+      edgeDetected = false;
+    }
+
+    // char s[100];
+    // sprintf(s, "Current BPM: %f, Average BPM: %f", currentBPM, averageBPM);
+    // Serial.println(s);
+  }
   hasPulse = true;
 }
 
 void triggerClockPulse() {
   ppqnCounter = (ppqnCounter + 1) % 24;
-  for(int i=0; i<PARTS; i++)
-    parts[i].Pulse(ppqnCounter);
+  parts[currentPartIndex].Pulse(ppqnCounter);
+  // for(int i=0; i<PARTS; i++)
+  //   parts[i].Pulse(ppqnCounter);
   if(ppqnCounter == 0) {
     ui->setLastClock(now);
   }
@@ -432,35 +465,4 @@ void loop() {
   //   currentPartIndex++;
   // }
 
- 
-
-  // if(songLoaded) {
-  //   songLoadedLed = true;
-  // }
-
-  // if(songLoading && now > (lastSongLoadingLed + 200)) {
-  //   lastSongLoadingLed = now;
-  //   songLoadedLed = !songLoadedLed;
-  // }
-
-  // if(instructionLed && now > (lastInstructionLed + 150)) {
-  //   lastInstructionLed = now;
-  //   instructionLed = false;
-  // }
-
-  // if(songLoadedLed)
-  //   ledPattern |= songLoadedPattern;
-  // else
-  //   ledPattern &= ~(songLoadedPattern);
-
-  // if(instructionLed)
-  //   ledPattern |= instructionLedPattern;
-  // else 
-  //   ledPattern &= ~(instructionLedPattern);
-  // updateUI(ledPattern);
-
-
-
 }
-
-

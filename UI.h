@@ -82,7 +82,7 @@ private:
   void (*programmingEndedCallback)(const int) = nullptr;
   void (*programmingCancelledCallback)(const int) = nullptr;
   void (*partProgrammingChangedCallback)(const int, Channel) = nullptr; // partIndex, channel
-  void (*partButtonPressedCallback)(const int, Channel, bool, bool) = nullptr; // partIndex, channel, programming, songloading
+  void (*partButtonPressedCallback)(const int, Channel&, bool, bool) = nullptr; // partIndex, channel, programming, songloading
 
 
   static SongManagerUI* instance;
@@ -383,6 +383,8 @@ public:
       prevSongNumber(0) {
         instance = this;
         lastClockInLed = 0;
+        songIsLoading = false;
+        programming = false;
       }
 
   void setLastClock(unsigned long now) {
@@ -409,7 +411,7 @@ public:
     partProgrammingChangedCallback = callback;
   }
 
-  void onPartButtonPressed(void (*callback)(const int, Channel, bool, bool)) {
+  void onPartButtonPressed(void (*callback)(const int, Channel&, bool, bool)) {
     partButtonPressedCallback = callback;
   }
 
@@ -456,7 +458,20 @@ public:
     songLoadingLed = true;
   }
 
+//unsigned long lastStatus = 0;
   void update(unsigned long now) {
+
+    // if(now > (lastStatus + 2000)) {
+    //   lastStatus = now;
+    //   char s[100];
+    //   sprintf(s, "UI STATE => selectedSongNumber: %d  prevSongNumer: %d  songIsLoading: %s  programming: %s"
+    //   , selectedSongNumber
+    //   , prevSongNumber
+    //   , songIsLoading ? "yes" : "no"
+    //   , programming ? "yes" : "no");
+    //   Serial.println(s);
+    // }
+
     if((songIsLoading || prevSongNumber != selectedSongNumber) && now > (lastSongBlink + LED_SHORT_PULSE)) {
       blinkSongNumber = !blinkSongNumber;
       lastSongBlink = now;
@@ -482,14 +497,23 @@ public:
 
     for(int digit=0; digit<DIGITS; digit++) {
       digitalWrite(LED_LATCH, LOW);
-      delayMicroseconds(50);
+      delayMicroseconds(1);
 
       updateOperationsBoardDigit(digit);
+
       for(int partIndex=0; partIndex<PARTS; partIndex++) {
-        updatePartDigit(partIndex, digit);
+        if(partIndex==4) {
+          write595byte(0);
+          write595byte(0);
+        } else {
+          updatePartDigit(partIndex, digit);
+        }
+
       }
+
+
       digitalWrite(LED_LATCH, HIGH);
-      delayMicroseconds(10);
+      //delayMicroseconds(10);
     }
   }
 
