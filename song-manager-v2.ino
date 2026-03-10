@@ -1,6 +1,4 @@
 #include <Wire.h>
-//#include <SD.h>
-//#include <SPI.h>
 
 #include "Common.h"
 #include "Models.h"
@@ -9,6 +7,7 @@
 #include "AutomationController.h"
 #include "ui.h"
 #include "Channel.h"
+#include "SongRepository.h"
 
 #define CLOCK_IN_PIN 12
 
@@ -17,9 +16,6 @@
 #define NOT_USED_3 10
 
 #define NOT_USED_6 27 // analog pin
-
-
-//const int chipSelect = BUILTIN_SDCARD;
 
 ClockSlave clockSlave(8);
 DrumSequencerSlave drumSequencerSlave(9);
@@ -35,6 +31,8 @@ InstructionPackage loadSong;
 
 EXTMEM Channel parts[PARTS];
 SongManagerUI* ui;
+
+SongRepository repository;
 
 
 unsigned long now = 0;
@@ -61,37 +59,7 @@ void printStructureSizes() {
   Serial.println(sizeof(DrumSequencerPart));
 }
 
-// void writeData(const char* filename, const char* data) {
-//   // Open the file for writing
-//   File file = SD.open(filename, FILE_WRITE);
-
-//   if (file) {
-//     file.println(data); // Write the data
-//     Serial.println("Data written to file.");
-//     file.close(); // Close the file
-//   } else {
-//     Serial.println("Error opening file for writing.");
-//   }
-// }
-
-// void readData(const char* filename) {
-//   // Open the file for reading
-//   File file = SD.open(filename);
-
-//   if (file) {
-//     Serial.println("Reading from file:");
-//     while (file.available()) {
-//       Serial.write(file.read()); // Read and print data
-//     }
-//     file.close(); // Close the file
-//   } else {
-//     Serial.println("Error opening file for reading.");
-//   }
-// }
 void setup() {
-
-
-  //Wire.begin();
   Serial.begin(115200);
   // parts
   for(int i=0; i<PARTS; i++) {
@@ -116,17 +84,9 @@ void setup() {
   pinMode(CLOCK_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), onClockPulse, RISING);
 
-  // Initialize the SD card
-  // if (!SD.begin(chipSelect)) {
-  //   Serial.println("Initialization failed!");
-  //   return;
-  // }
 
-  // // Write data to a file
-  // writeData("example.txt", "Hello, Teensy!");
-
-  // // Read data from the file
-  // readData("example.txt");  
+  // sd card
+  repository.begin();
 
 
   currentSong.parts[0].drumSequencerData.channel[0].divider = 6;

@@ -214,5 +214,97 @@ void printInstructionPackage(const InstructionPackage& package) {
 }
 
 
+String* splitString(String data, char delimiter, int &size) {
+    // Count delimiters to determine size
+    int count = 0;
+    for (uint i = 0; i < data.length(); i++) {
+        if (data.charAt(i) == delimiter) {
+            count++;
+        }
+    }
+    // Allocate array for result
+    size = count + 1; // Number of substrings
+    String* result = new String[size];
+
+    int dataIndex = 0;
+    int resultIndex = 0;
+    for (uint i = 0; i < data.length(); i++) {
+        if(data.charAt(i) == delimiter || i == data.length()) {
+          result[resultIndex] = data.substring(dataIndex, i);
+          dataIndex = i+1;
+          resultIndex++;
+        }
+    }
+
+    // Capture the final segment after the last delimiter
+    result[resultIndex] = data.substring(dataIndex);
+    return result;
+}
+
+bool isIntValue(String s) {
+    if (s.length() == 0) return false;
+    int start = 0;
+    
+    // Check for a leading minus sign
+    if (s.charAt(0) == '-') {
+        start = 1;
+        if (s.length() == 1) return false; // Just a minus sign is not valid
+    }
+
+    for (uint i = start; i < s.length(); i++) {
+        if (!isDigit(s.charAt(i))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool tryGetInt(String data, uint offset, uint end, int& value) {
+  value = 0;
+  if(data.length()==0) return false;
+  if(offset < 0) return false;
+  if(offset > end) return false;
+  if(end > data.length()) return false;
+
+  String v = data.substring(offset, end);
+  v.trim();
+  if(isIntValue(v)) {
+    value = v.toInt();
+    return true;
+  }
+  return false;
+}
+
+
+bool tryGetInt(String data, int& value) {
+    return tryGetInt(data, 0, data.length(), value);
+}
+
+bool tryParseInt(String data, uint16_t& value) {
+    data.trim();
+    
+    // Check for binary format
+    if (data.startsWith("0b") || data.length() == 16) {
+        value = 0;
+        for (uint i = 0; i < data.length(); i++) {
+            char c = data.charAt(i);
+            if (c == '0' || c == '1') {
+                value = (value << 1) | (c - '0');
+            } else if (c != 'b') {
+                return false; // Invalid character for binary
+            }
+        }
+        return true;
+    }
+    
+    // Check for hexadecimal format
+    if (data.startsWith("0x")) {
+        value = strtol(data.c_str(), nullptr, 16);
+        return true;
+    }
+
+    return false; // Unsupported format
+}
+
 
 #endif
