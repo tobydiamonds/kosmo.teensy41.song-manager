@@ -453,7 +453,15 @@ public:
 //    testMux();
   }
 
+  void startSongLoading(int songNumber) {
+    prevSongNumber = selectedSongNumber;
+    selectedSongNumber = songNumber;
+    songIsLoading = true;
+    songLoadingLed = false;
+  }
+
   void endSongLoading() {
+    prevSongNumber = selectedSongNumber;
     songIsLoading = false;
     songLoadingLed = true;
   }

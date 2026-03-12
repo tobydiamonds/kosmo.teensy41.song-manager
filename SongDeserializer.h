@@ -195,8 +195,6 @@ public:
 
   int deserialize(String line) {
     line.trim();
-    Serial.print("line: ");
-    Serial.println(line);
 
     if(line=="init") return -1;
     if(line=="apply") return -1;
@@ -210,7 +208,7 @@ public:
     }
 
     int size=0;
-    String* parts = splitString(line, '=', size);
+    String* parts = splitString(line, ':', size);
 
     int partIndex = -1;
     String module;
@@ -247,7 +245,7 @@ public:
     }
 
     // char s[200];
-    // sprintf(s, "partIndex: %d | module: %s | path: %s | values: %s", partIndex, module.c_str(), path.c_str(), values.c_str());
+    // sprintf(s, "line: %s => partIndex: %d | module: %s | path: %s | values: %s",line.c_str(), partIndex, module.c_str(), path.c_str(), values.c_str());
     // Serial.println(s);
 
 

@@ -70,14 +70,12 @@ public:
       }
     }
 
-    if(!success) {
+    if(!file) {
       file.close();
       Serial.print("Song loaded from: ");
       Serial.println(filename);  
-      return Song();
     }
     success = true;
-
     return song;
   }
 
@@ -107,6 +105,32 @@ public:
     Serial.println(filename);  
     return true;
   }
+
+  bool list(int index) {
+    char filename[15];
+    snprintf(filename, sizeof(filename), "song_%d.dat", index);
+    if(!SD.exists(filename)) {
+      Serial.print("File does not exist: ");
+      Serial.println(filename);
+      return false;
+    }    
+    File file = SD.open(filename);
+    if(!file) {
+      Serial.print("error accessing file: ");
+      Serial.println(filename);
+      return false;
+    }    
+
+    while (file.available()) {
+      String line = file.readStringUntil('\n');
+      Serial.println(line);
+    }
+
+    if(file) {
+      file.close();
+    }
+    return true;
+  }  
 
 };
 

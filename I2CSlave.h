@@ -120,6 +120,13 @@ public:
     return pendingInstructions.size();
   }
 
+  void clearAllPendingInstructions() {
+    while(pendingInstructions.size()>0) {
+      InstructionWrapper pending;
+      if(pendingInstructions.pop(pending))
+        cleanInstruction(pending);      
+    }
+  }
 };
 
 class ClockSlave : public I2CSlave {

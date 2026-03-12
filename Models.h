@@ -87,6 +87,15 @@ struct Song {
       parts[i] = Part();
     }
   }
+
+  int firstPart() {
+    for(int i=0; i<PARTS; i++) {
+      if(parts[i].pages > 0)
+        return i;
+    }
+    return -1;
+  }
+  
 };
 
 

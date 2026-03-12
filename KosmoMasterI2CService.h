@@ -151,6 +151,17 @@ public:
     }
   }
 
+  void cancelAllInstructions() {
+    for(int i=0; i<numSlaves; i++) {
+      InstructionWrapper current = slaves[i]->getInstructionInProgress();
+      if(current.opcode != Instruction::None) {
+        long traceId = slaves[i]->cancelInstruction();
+        if(instructionCancelledCallback)
+          instructionCancelledCallback(traceId, slaves[i]->getAddress(), current.opcode, current.payload.partIndex);            
+      }
+    }
+  }
+
 
   InstructionPackage sendSongParts(const Song& song) {
     long traceId = millis();

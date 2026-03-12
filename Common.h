@@ -215,6 +215,11 @@ void printInstructionPackage(const InstructionPackage& package) {
 
 
 String* splitString(String data, char delimiter, int &size) {
+    if(data.length()==0) {
+      size = 0;
+      return new String[0];
+    }
+
     // Count delimiters to determine size
     int count = 0;
     for (uint i = 0; i < data.length(); i++) {

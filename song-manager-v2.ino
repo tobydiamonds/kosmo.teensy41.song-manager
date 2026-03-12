@@ -8,6 +8,8 @@
 #include "ui.h"
 #include "Channel.h"
 #include "SongRepository.h"
+#include "SongDeserializer.h"
+#include "SerialCLI.h"
 
 #define CLOCK_IN_PIN 12
 
@@ -27,12 +29,13 @@ KosmoMasterI2CService master(slaves, 2);
 EXTMEM AutomationController automationController;
 
 EXTMEM Song currentSong;
-InstructionPackage loadSong;
+InstructionPackage songLoaderInstruction;
 
 EXTMEM Channel parts[PARTS];
 SongManagerUI* ui;
 
-SongRepository repository;
+SongRepository songRepository;
+SerialCLI serialCLI;
 
 
 unsigned long now = 0;
@@ -44,20 +47,13 @@ bool reset = false;
 int ppqnCounter = 0;
 int currentStep = 0;
 int currentPartIndex = 0;
+int currentSongNumber = 0;
 
 bool partCompleted = false;
 int completedPartIndex = -1;
 bool chainToNextPart = false;
 int nextPartIndex = -1;
 
-
-void printStructureSizes() {
-  Serial.print("Size of DrumSequencerChannel: ");
-  Serial.println(sizeof(DrumSequencerChannel));
-
-  Serial.print("Size of DrumSequencerPart: ");
-  Serial.println(sizeof(DrumSequencerPart));
-}
 
 void setup() {
   Serial.begin(115200);
@@ -84,65 +80,135 @@ void setup() {
   pinMode(CLOCK_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), onClockPulse, RISING);
 
-
   // sd card
-  repository.begin();
+  songRepository.begin();
 
-
-  currentSong.parts[0].drumSequencerData.channel[0].divider = 6;
-  currentSong.parts[0].drumSequencerData.channel[0].enabled = 1;
-  currentSong.parts[0].drumSequencerData.channel[0].lastStep = 15;
-  currentSong.parts[0].drumSequencerData.channel[0].page[0] = 0x8888;
-  currentSong.parts[0].drumSequencerData.channel[1].divider = 6;
-  currentSong.parts[0].drumSequencerData.channel[1].enabled = 1;
-  currentSong.parts[0].drumSequencerData.channel[1].lastStep = 15;
-  currentSong.parts[0].drumSequencerData.channel[1].page[0] = 0x4444;
-
-
-  currentSong.parts[1].drumSequencerData.channel[0].divider = 6;
-  currentSong.parts[1].drumSequencerData.channel[0].enabled = 1;
-  currentSong.parts[1].drumSequencerData.channel[0].lastStep = 15;
-  currentSong.parts[1].drumSequencerData.channel[0].page[0] = 0x8888;
-  currentSong.parts[1].drumSequencerData.channel[1].divider = 6;
-  currentSong.parts[1].drumSequencerData.channel[1].enabled = 1;
-  currentSong.parts[1].drumSequencerData.channel[1].lastStep = 15;
-  currentSong.parts[1].drumSequencerData.channel[1].page[0] = 0x4444;  
-  currentSong.parts[1].drumSequencerData.channel[2].divider = 6;
-  currentSong.parts[1].drumSequencerData.channel[2].enabled = 1;
-  currentSong.parts[1].drumSequencerData.channel[2].lastStep = 15;
-  currentSong.parts[1].drumSequencerData.channel[2].page[0] = 0xFFFF;    
-
-
-  AutomationSequence sequence;
-  sequence.startStep = 3;
-  sequence.interval = 5;
-  for(int i=0; i<5; i++) {
-    Automation automation;
-    automation.slaveAddress = 8;
-    automation.target = 0xAA;
-    automation.value = i*2;
-    sequence.automations[i] = automation;
-  }
-  currentSong.parts[1].automationSequences[0] = sequence;
-
+  // master-slave
   automationController.onAutomation(onAutomation);
-
   master.onInstructionComplete(onInstructionComplete);
   master.onInstructionCancelled(onInstructionCancelled);
 
+  // cli
+  serialCLI.onDeserializeCommand(onDeserializeCommand);
+  serialCLI.onApplySong(onApplySong);
+  serialCLI.onInitSong(onInitSong);
+  serialCLI.onListSong(onListSong);
+  serialCLI.onPrintSong(onPrintSong);
+  serialCLI.onLoadSong(onLoadSong);
+  serialCLI.onSaveSong(onSaveSong);
+  serialCLI.onStopSong(onStopSong);
+  serialCLI.onPrintPartSong(onPrintPartSong);
+  serialCLI.onStartPartSong(onStartPartSong);
+
   Serial.println("Initialization done.");
 
-  printStructureSizes();
+
+  // AutomationSequence sequence;
+  // sequence.startStep = 3;
+  // sequence.interval = 5;
+  // for(int i=0; i<5; i++) {
+  //   Automation automation;
+  //   automation.slaveAddress = 8;
+  //   automation.target = 0xAA;
+  //   automation.value = i*2;
+  //   sequence.automations[i] = automation;
+  // }
+  // currentSong.parts[1].automationSequences[0] = sequence;
+
+
 }
 
-void onSongNumberSelected(int songNumber) {
-  Serial.print("Song number selected: ");
-  Serial.println(songNumber);
 
-  loadSong = master.sendSongParts(currentSong);
-  
-  Serial.println("LOADING SONG");
-  printInstructionPackage(loadSong);  
+
+void applyCurrentSongToPart(const int partIndex) {
+  parts[partIndex].SetPageCount(currentSong.parts[partIndex].pages);
+  parts[partIndex].SetChainTo(currentSong.parts[partIndex].chainTo);
+  parts[partIndex].SetRepeats(currentSong.parts[partIndex].repeats);        
+  parts[partIndex].SetDrumSequencerPart(currentSong.parts[partIndex].drumSequencerData);
+  parts[partIndex].SetClockPart(currentSong.parts[partIndex].clockData);
+  parts[partIndex].SetSamplerPart(currentSong.parts[partIndex].samplerData);
+}
+
+void applyCurrentSongToParts() {
+  for(int i=0; i<PARTS; i++) {
+    applyCurrentSongToPart(i);
+  }
+}
+
+void loadTheSong(int songNumber) {
+  Serial.print("LOADING SONG ");
+  Serial.println(songNumber);
+  ui->startSongLoading(songNumber);
+  bool success;
+  currentSong = songRepository.load(songNumber, success);
+  if(success) {
+    currentSongNumber = songNumber;
+    master.cancelAllInstructions();
+    songLoaderInstruction = master.sendSongParts(currentSong);  
+  } else {
+    ui->endSongLoading();
+    Serial.println("ERROR LOADING SONG!!!");
+  }
+}
+
+// CLI handlers
+  void onLoadSong(const int songNumber) {
+    loadTheSong(songNumber);
+  }
+
+  void onSaveSong(const int songNumber) {
+    songRepository.save(currentSong, songNumber);
+  }  
+
+  void onPrintSong() {
+    // print currentSong object
+    printSong(currentSong);
+  }    
+
+  void onListSong(const int songIndex) {
+    // list song from disc
+    songRepository.list(songIndex);
+  }    
+
+  void onStopSong() {
+    master.sendInstruction(clockSlave.getAddress(), Instruction::Stop);
+  }  
+
+  void onInitSong() {
+    currentSong = Song();
+    applyCurrentSongToParts();
+  }    
+
+  void onApplySong() {
+    applyCurrentSongToParts();
+    int partIndex = currentSong.firstPart();
+    if(partIndex >= 0) {
+      master.sendCurrentPartIndex(partIndex);
+    }
+  }   
+
+  void onStartPartSong(const int partIndex) {
+    master.sendCurrentPartIndex(partIndex);
+    master.sendInstruction(clockSlave.getAddress(), Instruction::Start);
+    parts[partIndex].Start();
+  }  
+
+  void onPrintPartSong(const int partIndex) {
+    printSongPart(currentSong.parts[partIndex], partIndex);
+  }    
+
+  void onDeserializeCommand(const String command) {
+    SongDeserializer deserializer(currentSong);
+    int partIndex = deserializer.deserialize(command);
+    if(partIndex >= 0) {
+      applyCurrentSongToPart(partIndex);
+    }
+  }
+
+// operation board handlers
+
+void onSongNumberSelected(int songNumber) {
+  loadTheSong(songNumber);
 }
 
 void onProgrammingStarted(int songNumber) {
@@ -160,7 +226,7 @@ void onProgrammingEnded(int songNumber) {
     currentSong.parts[i].drumSequencerData = parts[i].GetDrumSequencerPart();
     currentSong.parts[i].samplerData = parts[i].GetSamplerPart();
   }
-  // save the song
+  songRepository.save(currentSong, songNumber);
 }
 
 void onProgrammingCancelled(int songNumber) {
@@ -174,6 +240,8 @@ void onProgrammingCancelled(int songNumber) {
     parts[i].SetSamplerPart(currentSong.parts[i].samplerData);
   }  
 }
+
+// parts
 
 void onPartButtonPressed(const int partIndex, Channel& channel, bool programming, bool songIsLoading) {
   char s[100];
@@ -247,17 +315,22 @@ void onPartStarted(uint8_t partIndex) {
 void onPartStopped(uint8_t partIndex) {
 }
 
+
+// automations
+
 void onAutomation(const Automation automation) {
   master.sendAutomation(automation.slaveAddress, automation);
 }
 
+// instructions
+
 void onInstructionCancelled(long traceId, uint8_t slaveAddress, Instruction instruction, uint8_t partIndex) {
   char s[100];
-  sprintf(s, "on no - instruction cancelled => %d  slave:%d  part-index: %d  trace-id: %ld", instruction, slaveAddress, partIndex, traceId);
+  sprintf(s, "instruction cancelled => %d  slave:%d  part-index: %d  trace-id: %ld", instruction, slaveAddress, partIndex, traceId);
   Serial.println(s);
 
-  if(traceId == loadSong.getTraceId()) {
-    loadSong.clear();
+  if(traceId == songLoaderInstruction.getTraceId()) {
+    songLoaderInstruction.clear();
   }  
 }
 
@@ -266,14 +339,14 @@ void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instr
   sprintf(s, "instruction completed => %d  slave:%d  part-index: %d  trace-id: %ld", instruction, slaveAddress, partIndex, traceId);
   Serial.println(s);
 
-  if(traceId == loadSong.getTraceId()) {
-    loadSong.markCompleted(slaveAddress, instruction, partIndex);
+  if(traceId == songLoaderInstruction.getTraceId()) {
+    songLoaderInstruction.markCompleted(slaveAddress, instruction, partIndex);
 
-    printInstructionPackage(loadSong);
+    printInstructionPackage(songLoaderInstruction);
 
-    if(loadSong.isComplete()) {
+    if(songLoaderInstruction.isComplete()) {
       Serial.println("SONG LOADED");
-      loadSong.clear();
+      songLoaderInstruction.clear();
       ui->endSongLoading();
     }
   }
@@ -383,6 +456,8 @@ void loop() {
     parts[i].Run(now);  
   }
   ui->update(now);   
+
+  serialCLI.run();
 
   // if(now > (lastPartIndexChange + 2048)) {
   //   lastPartIndexChange = now;
