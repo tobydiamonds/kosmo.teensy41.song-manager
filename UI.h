@@ -348,9 +348,9 @@ private:
   }  
 
   void onAnalogPotChangedHandler(int partIndex, int pot, uint16_t value) {
-    char s[100];
-    sprintf(s, "part: %d  pot: %d  value: %d", partIndex, pot, value);
-    Serial.println(s);
+    // char s[100];
+    // sprintf(s, "part: %d  pot: %d  value: %d", partIndex, pot, value);
+    // Serial.println(s);
     // ###handle bad pots###
     if(partIndex == 2 && pot == 0) return;
     if(partIndex == 4 && pot == 1) return;
@@ -435,8 +435,16 @@ public:
 
     analogPotBank1.onChange(SongManagerUI::staticAnalogPotChangedHandler);
     analogPotBank1.setHysteresis(10);
+    analogPotBank1.setPotHysteresis(2, 0, 20);
+    analogPotBank1.setPotHysteresis(3, 0, 20);
+    analogPotBank1.setPotHysteresis(6, 0, 20);
+    analogPotBank1.setPotHysteresis(7, 0, 20);
+
+    analogPotBank1.setPotHysteresis(3, 2, 20);
     analogPotBank1.setPotHysteresis(4, 2, 30);
     analogPotBank1.setPotHysteresis(6, 2, 20);
+    analogPotBank1.setPotHysteresis(7, 2, 20);
+
     analogPotBank1.setSamplesPerRead(5);
     analogPotBank1.begin();    
   }
@@ -506,9 +514,7 @@ public:
     for(int digit=0; digit<DIGITS; digit++) {
       digitalWrite(LED_LATCH, LOW);
       delayMicroseconds(1);
-
       updateOperationsBoardDigit(digit);
-
       for(int partIndex=0; partIndex<PARTS; partIndex++) {
         if(partIndex==4) {
           write595byte(0);
@@ -516,10 +522,7 @@ public:
         } else {
           updatePartDigit(partIndex, digit);
         }
-
       }
-
-
       digitalWrite(LED_LATCH, HIGH);
       //delayMicroseconds(10);
     }

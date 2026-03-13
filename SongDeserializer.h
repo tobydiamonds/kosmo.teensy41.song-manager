@@ -148,7 +148,6 @@ private:
       Serial.println(values);
       error = true;
     }
-
     if(!tryGetInt(parts[0], pages)) {
       Serial.print("Invalid value for pos 0/pages: ");
       Serial.println(parts[0]);
@@ -164,7 +163,6 @@ private:
       Serial.println(parts[2]);
       error = true;
     }      
-
     delete[] parts;
 
     // Validate ranges
@@ -246,10 +244,10 @@ public:
 
     // char s[200];
     // sprintf(s, "line: %s => partIndex: %d | module: %s | path: %s | values: %s",line.c_str(), partIndex, module.c_str(), path.c_str(), values.c_str());
-    // Serial.println(s);
+    // Serial.print(s);
 
 
-    if(partIndex != 1) {
+    if(partIndex != -1) {
       module.trim();
       path.trim();
       values.trim();
@@ -265,6 +263,9 @@ public:
       } else {
         result = parseSongProgrammer(partIndex, values);
       }
+
+      // sprintf(s, " => %s", (result) ? "OK" : "ERR");
+      // Serial.println(s);
 
       if(!result) partIndex = -1;
     }

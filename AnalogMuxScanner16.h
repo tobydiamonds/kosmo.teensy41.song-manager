@@ -122,22 +122,22 @@ public:
       uint16_t raw = values[i];
       uint16_t idx = i * PARTS + ch;
 
-      if(pot!=2) continue;
+      if(pot==1) continue;
 
       if (!_hasStable[idx]) {
         _stable[idx] = raw;
         _hasStable[idx] = true;
-        if (_onChange && pot==2) _onChange(ch, pot, _stable[idx]); // until more muxes
+        if (_onChange) _onChange(ch, pot, _stable[idx]); // until more muxes
       } else {
         int diff = (int)raw - (int)_stable[idx];
         if (diff < 0) diff = -diff;
         if (diff >= _potHysteresis[idx]) {
-          char s[100];
-          sprintf(s, "idx: %d  ch: %d  stable: %d  raw: %d  diff: %d  hyst: %d", idx, ch, _stable[idx], raw, diff, _potHysteresis[idx]);
-          Serial.println(s);
+          // char s[100];
+          // sprintf(s, "idx: %d  ch: %d  pot: %d  stable: %d  raw: %d  diff: %d  hyst: %d", idx, ch, pot, _stable[idx], raw, diff, _potHysteresis[idx]);
+          // Serial.println(s);
 
           _stable[idx] = raw;
-          if (_onChange && pot==2) _onChange(ch, pot, _stable[idx]);  // until more muxes
+          if (_onChange) _onChange(ch, pot, _stable[idx]);  // until more muxes
         }
       }
     }
