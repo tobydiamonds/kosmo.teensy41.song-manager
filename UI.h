@@ -387,7 +387,8 @@ public:
         programming = false;
       }
 
-  void setLastClock(unsigned long now) {
+  void clock(unsigned long now) {
+    clockInLed = true;
     lastClockInLed = now;
   }
 
@@ -472,6 +473,7 @@ public:
     prevSongNumber = selectedSongNumber;
     songIsLoading = false;
     songLoadingLed = true;
+    programming = false;
   }
 
 //unsigned long lastStatus = 0;
@@ -506,8 +508,9 @@ public:
       lastSongLoadingLed = now;
     }
 
-    if(now >(lastClockInLed + LED_SHORT_PULSE)) {
+    if(now > (lastClockInLed + LED_SHORT_PULSE)) {
       clockInLed = false;
+      lastClockInLed = now;
     }
 
 

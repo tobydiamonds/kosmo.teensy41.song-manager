@@ -347,6 +347,7 @@ void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instr
     if(songLoaderInstruction.isComplete()) {
       Serial.println("SONG LOADED");
       songLoaderInstruction.clear();
+      applyCurrentSongToParts();
       ui->endSongLoading();
     }
   }
@@ -406,7 +407,7 @@ void triggerClockPulse() {
   // for(int i=0; i<PARTS; i++)
   //   parts[i].Pulse(ppqnCounter);
   if(ppqnCounter == 0) {
-    ui->setLastClock(now);
+    ui->clock(now);
   }
 }
 

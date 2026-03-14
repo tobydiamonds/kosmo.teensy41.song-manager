@@ -12,7 +12,7 @@ public:
 
       // Song Programmer Command
       String line = String(partIndex) + "=" + 
-                    String(part.drumSequencerData.channel[0].lastStep / 16 + 1) + " " + 
+                    String(part.pages) + " " + 
                     String(part.repeats) + " " + 
                     String(part.chainTo);
       lineCallback(line);
