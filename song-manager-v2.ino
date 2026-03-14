@@ -69,11 +69,13 @@ void setup() {
   // ui
   ui = new SongManagerUI(parts);  
   ui->onSongNumberSelected(onSongNumberSelected);
+  ui->onSongInit(onSongInit);
   ui->onProgrammingStarted(onProgrammingStarted);
   ui->onProgrammingEnded(onProgrammingEnded);
   ui->onProgrammingCancelled(onProgrammingCancelled);
   ui->onPartProgrammingChanged(onPartProgrammingChanged);
   ui->onPartButtonPressed(onPartButtonPressed);
+  ui->onCopyPart(onCopyPart);
   ui->begin();
 
   // clock in
@@ -205,10 +207,15 @@ void loadTheSong(int songNumber) {
     }
   }
 
-// operation board handlers
+// ui handlers
 
 void onSongNumberSelected(int songNumber) {
   loadTheSong(songNumber);
+}
+
+void onSongInit(const int songNumber) {
+  currentSong = Song();
+  applyCurrentSongToParts(); 
 }
 
 void onProgrammingStarted(int songNumber) {
@@ -239,6 +246,15 @@ void onProgrammingCancelled(int songNumber) {
     parts[i].SetDrumSequencerPart(currentSong.parts[i].drumSequencerData);
     parts[i].SetSamplerPart(currentSong.parts[i].samplerData);
   }  
+}
+
+void onCopyPart(const int sourcePartIndex, const int destPartIndex) {
+  parts[destPartIndex].SetPageCount(parts[sourcePartIndex].PageCount());
+  parts[destPartIndex].SetRepeats(parts[sourcePartIndex].Repeats());
+  parts[destPartIndex].SetChainTo(parts[sourcePartIndex].ChainTo());
+  parts[destPartIndex].SetClockPart(parts[sourcePartIndex].GetClockPart());
+  parts[destPartIndex].SetDrumSequencerPart(parts[sourcePartIndex].GetDrumSequencerPart());
+  parts[destPartIndex].SetSamplerPart(parts[sourcePartIndex].GetSamplerPart());
 }
 
 // parts

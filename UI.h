@@ -77,12 +77,14 @@ private:
   int selectedSongNumber;
   int prevSongNumber;
 
-  void (*songNumberSelectedCallback)(const int) = nullptr;
-  void (*programmingStartedCallback)(const int) = nullptr;
-  void (*programmingEndedCallback)(const int) = nullptr;
-  void (*programmingCancelledCallback)(const int) = nullptr;
+  void (*songNumberSelectedCallback)(const int) = nullptr; // song number
+  void (*programmingStartedCallback)(const int) = nullptr; // song number
+  void (*programmingEndedCallback)(const int) = nullptr; // song number
+  void (*programmingCancelledCallback)(const int) = nullptr; // song number
   void (*partProgrammingChangedCallback)(const int, Channel) = nullptr; // partIndex, channel
   void (*partButtonPressedCallback)(const int, Channel&, bool, bool) = nullptr; // partIndex, channel, programming, songloading
+  void (*songInitCallback)(const int) = nullptr; // song number
+  void (*copyPartCallback)(const int, const int) = nullptr; // source part index, dest part index
 
 
   static SongManagerUI* instance;
@@ -111,20 +113,28 @@ private:
       prevSongBtn.update(incoming, now);
     }
 
+    // INIT SONG
+    if(programBtn.isDown() && loadBtn.wasPressed() && songInitCallback) {
+      // init the song and start programming mode
+      songInitCallback(selectedSongNumber);
+      programming = true;
+      programmingStartedCallback(selectedSongNumber);
+    }  
+
     // NEXT SONG INDEX
     if(!programming && nextSongBtn.wasPressed() && !prevSongBtn.isDown()) {
       if(selectedSongNumber < MAX_SONGS-2)
         selectedSongNumber++;
       else
         selectedSongNumber=1;
-    }
+    } 
     // PREV SONG INDEX
     if(!programming && prevSongBtn.wasPressed() && !nextSongBtn.isDown()) {
       if(selectedSongNumber > 1)
         selectedSongNumber--;
       else
         selectedSongNumber = MAX_SONGS;
-    }
+    } 
     // LOAD SONG
     if(!programming && loadBtn.wasPressed()) { 
       songIsLoading = true;
@@ -132,21 +142,21 @@ private:
       lastSongLoading = now;
       prevSongNumber = selectedSongNumber;
       if(songNumberSelectedCallback) songNumberSelectedCallback(selectedSongNumber);
-    }    
+    } 
     // CANCEL LOAD SONG
     if(songIsLoading && loadBtn.wasPressed()) {
       songIsLoading = false;
       songLoadingLed = true;
       selectedSongNumber = prevSongNumber;
       if(songNumberSelectedCallback) songNumberSelectedCallback(selectedSongNumber);
-    }
+    } 
     // CANCEL PROGRAMMING
     if(programming && loadBtn.wasPressed()) { 
       programming = false;
       programmingLed = false;
       if(programmingCancelledCallback)programmingCancelledCallback(selectedSongNumber);
-    }    
-    if(!songIsLoading && programBtn.wasPressed()) { 
+    } 
+    if(programBtn.wasPressed()) { 
     // START PROGRAMMING
       if(!programming) {                      
         programming = true;
@@ -159,19 +169,32 @@ private:
     } 
   }  
 
+  int indexOfDownButton() {
+    for(int i=0; i<PARTS; i++) {
+      if(parts[i].Button()->isDown())
+        return i;
+    }
+    return -1;
+  }
+
   void scanChannelBoards(unsigned long now) {
     uint8_t incoming = 0;
     for(int i=0; i<PARTS; i++) {
       if(i % 8 == 0) {// only read 1 165 pr 8 parts
         incoming = read165byte();
         //printByteln(incoming);
-        if(incoming == 0xFF) return;
+        if(incoming == 0xFF) continue;
       }
 
+      if(!partButtonPressedCallback) continue;
+
       parts[i].Button()->update(incoming, now);
-      if(parts[i].Button()->wasPressed()) {
-        if(partButtonPressedCallback)
-          partButtonPressedCallback(i, parts[i], programming, songIsLoading);
+      int indexOfSourceButton = indexOfDownButton();
+
+      if(programming && parts[i].Button()->wasPressed() && indexOfSourceButton != -1 && indexOfSourceButton != i) {
+        copyPartCallback(indexOfSourceButton, i);
+      } else if(parts[i].Button()->wasPressed()) {
+        partButtonPressedCallback(i, parts[i], programming, songIsLoading);
       }      
     }
   }
@@ -396,6 +419,10 @@ public:
     songNumberSelectedCallback = callback;
   }
 
+  void onSongInit(void (*callback)(const int)) {
+    songInitCallback = callback;
+  }  
+
   void onProgrammingStarted(void (*callback)(const int)) {
     programmingStartedCallback = callback;
   }
@@ -415,6 +442,11 @@ public:
   void onPartButtonPressed(void (*callback)(const int, Channel&, bool, bool)) {
     partButtonPressedCallback = callback;
   }
+
+  void onCopyPart(void (*callback)(const int, const int)) {
+    copyPartCallback = callback;
+  }
+
 
   void begin() {
     pinMode(LED_CLK, OUTPUT);
