@@ -68,7 +68,7 @@ private:
   unsigned long lastClockInLed = 0;  
   unsigned long lastPotScan = 0;
   bool blinkSongNumber;
-  bool programmingLed;
+  bool programmingLed = false;
   bool songIsLoading;
   bool songLoadingLed;
   bool programming;
@@ -123,7 +123,7 @@ private:
 
     // NEXT SONG INDEX
     if(!programming && nextSongBtn.wasPressed() && !prevSongBtn.isDown()) {
-      if(selectedSongNumber < MAX_SONGS-2)
+      if(selectedSongNumber < MAX_SONGS)
         selectedSongNumber++;
       else
         selectedSongNumber=1;
@@ -405,7 +405,7 @@ public:
       analogPotBank1(MUX_S0, MUX_S1, MUX_S2, MUX_S3, MUX_ENA, A10, A11, A12, PARTS),
       lastUpdate(0),
       lastScan(0),
-      selectedSongNumber(0),
+      selectedSongNumber(1),
       prevSongNumber(0) {
         instance = this;
         lastClockInLed = 0;
@@ -551,9 +551,13 @@ public:
     if(prevSongNumber == selectedSongNumber)
       blinkSongNumber = false;
 
-    if(programming && now > (lastProgrammingLed + LED_SHORT_PULSE)) {
-      programmingLed = !programmingLed;
-      lastProgrammingLed = now;
+    if(programming) {
+      if(now > (lastProgrammingLed + LED_SHORT_PULSE)) {
+        programmingLed = !programmingLed;
+        lastProgrammingLed = now;
+      }
+    } else {
+      programmingLed = false;
     }
 
     if(songIsLoading && now > (lastSongLoadingLed + LED_SHORT_PULSE)) {

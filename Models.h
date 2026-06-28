@@ -57,7 +57,7 @@ DrumSequencerPart InitDrumSequencerPart() {
 
 SamplerPart InitSamplerPart() {
   SamplerPart init;
-  init.bank = 0;
+  init.bank = 1;
   for(int i=0; i<5; i++) {
     init.mix[i] = 800;
   }

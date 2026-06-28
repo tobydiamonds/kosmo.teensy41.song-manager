@@ -107,6 +107,7 @@ void setup() {
   serialCLI.onDebug(onDebug);
 
   Serial.println("Initialization done.");
+  loadTheSong(1);
 
 
   // AutomationSequence sequence;
@@ -376,8 +377,6 @@ void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instr
   if(traceId == songLoaderInstruction.getTraceId()) {
     songLoaderInstruction.markCompleted(slaveAddress, instruction, partIndex);
 
-    printInstructionPackage(songLoaderInstruction);
-
     if(songLoaderInstruction.isComplete()) {
       Serial.println("SONG LOADED");
       songLoaderInstruction.clear();
@@ -448,7 +447,7 @@ void triggerClockPulse() {
 void loop() {
   now = millis();
 
-  // handle reset
+  // handle reset - only if clock was running and stops for 2 seconds
   if(now > (lastClockPulse + 2000) && hasPulse) {
     reset = true;
     hasPulse = false;
@@ -456,13 +455,14 @@ void loop() {
 
   if(reset) {
     reset = false;
-    ppqnCounter = 0;
-    for(int i=0; i<PARTS; i++) {
-      parts[i].Reset();
+    if(parts[currentPartIndex].IsStarted()) {
+      ppqnCounter = 0;
+      for(int i=0; i<PARTS; i++) {
+        parts[i].Reset();
+      }
+      currentPartIndex = 0;
+      ui->reset();
     }
-    currentPartIndex = 0;
-    ui->reset();
-    Serial.println("reset!");
   }
 
   // handle clock in

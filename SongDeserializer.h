@@ -242,9 +242,6 @@ public:
       Serial.println(line);
     }
 
-    char s[200];
-    sprintf(s, "line: %s => partIndex: %d | module: %s | path: %s | values: %s",line.c_str(), partIndex, module.c_str(), path.c_str(), values.c_str());
-    Serial.print(s);
 
 
     if(partIndex != -1) {
