@@ -95,8 +95,7 @@ public:
     digitalWrite(_s0, (_mux & 0x01));
     digitalWrite(_s1, (_mux & 0x02) >> 1);
     digitalWrite(_s2, (_mux & 0x04) >> 2);
-    //digitalWrite(_s3, (_mux & 0x08) >> 3);
-    digitalWrite(_s3, LOW); // until the upper 8 inputs are connected
+    digitalWrite(_s3, (_mux & 0x08) >> 3);
 
     delayMicroseconds(20);
 
@@ -122,8 +121,6 @@ public:
       uint16_t raw = values[i];
       uint16_t idx = i * PARTS + ch;
 
-      if(pot==1) continue;
-
       if (!_hasStable[idx]) {
         _stable[idx] = raw;
         _hasStable[idx] = true;
@@ -142,8 +139,7 @@ public:
       }
     }
 
-    //_mux = (_mux + 1) & 0x0F;
-    _mux = (_mux + 1) & 0x07; // Only cycle through 0..7
+    _mux = (_mux + 1) & 0x0F;
   }
 };
 

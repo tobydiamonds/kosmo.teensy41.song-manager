@@ -205,7 +205,9 @@ public:
 
   void SetRepeatsRaw(uint16_t raw) {
     _repeatsRaw = raw;
-    SetRepeats(map(raw, 0, 1023, 0, 32));
+    if(raw < 100) SetRepeats(0);
+    else if(raw > 923) SetRepeats(32);
+    else SetRepeats(map(raw, 100, 923, 1, 31));
   }
 
   void SetChainTo(int8_t chainTo) {
@@ -215,7 +217,9 @@ public:
 
   void SetChainToRaw(uint16_t raw) {
     _chainToRaw = raw;
-    SetChainTo(map(raw, 0, 1023, -1, 15));
+    if(raw < 100) SetChainTo(-1);
+    else if(raw > 923) SetChainTo(15);
+    else SetChainTo(map(raw, 100, 923, 0, 14));
   }
 
   void SetLastStep(uint8_t value) {
