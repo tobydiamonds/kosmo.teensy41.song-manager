@@ -277,10 +277,10 @@ void onCopyPart(const int sourcePartIndex, const int destPartIndex) {
 // parts
 
 void onPartButtonPressed(const int partIndex, Channel& channel, bool programming, bool songIsLoading) {
-  char s[100];
-  sprintf(s, "button pressed: %d  programming: %s  loading: %s", partIndex, programming ? "yes" : "no", songIsLoading ? "yes" : "no");
-  Serial.println(s);
-  channel.Print();
+  // char s[100];
+  // sprintf(s, "button pressed: %d  programming: %s  loading: %s", partIndex, programming ? "yes" : "no", songIsLoading ? "yes" : "no");
+  // Serial.println(s);
+  // channel.Print();
   if(songIsLoading) return;
   if(programming && channel.PageCount()==0) { 
     // when we click the button for a part that is not in use we want to initialize slaves with default values to simplify starting a new part
@@ -369,9 +369,9 @@ void onInstructionCancelled(long traceId, uint8_t slaveAddress, Instruction inst
 }
 
 void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instruction, uint8_t partIndex) {
-  char s[100];
-  sprintf(s, "instruction completed => %d  slave:%d  part-index: %d  trace-id: %ld", instruction, slaveAddress, partIndex, traceId);
-  Serial.println(s);
+  // char s[100];
+  // sprintf(s, "instruction completed => %d  slave:%d  part-index: %d  trace-id: %ld", instruction, slaveAddress, partIndex, traceId);
+  // Serial.println(s);
 
   if(traceId == songLoaderInstruction.getTraceId()) {
     songLoaderInstruction.markCompleted(slaveAddress, instruction, partIndex);
@@ -493,46 +493,4 @@ void loop() {
   ui->update(now);   
 
   serialCLI.run();
-
-  // if(now > (lastPartIndexChange + 2048)) {
-  //   lastPartIndexChange = now;
-  //   currentStep = 0;
-  //   lastCurrentStepChange = now;
-
-  //   if(currentPartIndex == PARTS) {
-  //     currentPartIndex = 0;
-  //   }
-
-  //   if(currentPartIndex==0) {
-  //     master.sendInstruction(8, Instruction::Start);
-  //   }
-
-  //   master.sendCurrentPartIndex(currentPartIndex);
-
-  //   if(currentPartIndex==4) {
-  //     Part part;
-  //     part = master.retrievePartFromSlaves();
-  //     //printSongPart(part, -1);
-  //   }
-
-
-  //   if(currentPartIndex==7) {
-
-  //     master.sendInstruction(8, Instruction::Stop);
-
-  //     songLoaded = false;
-  //     songLoading = true;
-  //     loadSong = master.sendSongParts(currentSong);
-      
-  //     Serial.println("LOADING SONG");
-  //     printInstructionPackage(loadSong);
-  //   }
-
-  //   Serial.print("Loading automations for part ");
-  //   Serial.println(currentPartIndex);
-  //   automationController.load(currentSong.parts[currentPartIndex]);
-
-  //   currentPartIndex++;
-  // }
-
 }

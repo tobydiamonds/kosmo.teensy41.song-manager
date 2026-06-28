@@ -492,7 +492,6 @@ public:
       lastPotScan = now;
       analogPotBank1.scan(now);
     }
-//    testMux();
   }
 
   void scanInputsDebug() {
@@ -586,33 +585,6 @@ public:
   void reset() {
 
   }
-
-  void testMux() {
-
-    int values[8] = {0};
-
-    for (int i = 0; i < 8; i++) {
-      digitalWrite(MUX_S0, (i & 0x01));
-      digitalWrite(MUX_S1, (i & 0x02) >> 1);
-      digitalWrite(MUX_S2, (i & 0x04) >> 2);
-      digitalWrite(MUX_S3, LOW);
-
-      delayMicroseconds(100);
-
-      values[i] = analogRead(A12);
-
-    }
-
-    char s[100];
-    sprintf(s, "%d  %d  %d", values[0], values[1], values[2]);
-    Serial.println(s);
-    sprintf(s, "%d  %d  %d", values[3], values[4], values[5]);
-    Serial.println(s);
-    sprintf(s, "%d  %d", values[6], values[7]);
-    Serial.println(s);        
-    Serial.println();
-  }  
-
 };
 
 SongManagerUI* SongManagerUI::instance = nullptr;
