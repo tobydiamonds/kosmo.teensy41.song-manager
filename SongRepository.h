@@ -41,45 +41,40 @@ public:
     }    
   }
 
-  Song load(int index, bool &success) {
+  bool load(int index, Song& song) {
     char filename[15];
     snprintf(filename, sizeof(filename), "song_%d.dat", index);
     if(!SD.exists(filename)) {
       Serial.print("File does not exist: ");
       Serial.println(filename);
-      success = false;
-      return Song();
-    }    
+      return false;
+    }
     File file = SD.open(filename);
     if(!file) {
       Serial.print("error accessing file: ");
       Serial.println(filename);
-      success = false;
-      return Song();    
-    }    
+      return false;
+    }
 
-    Song song;
     SongDeserializer deserializer(song);
     while (file.available()) {
       String line = file.readStringUntil('\n');
       int partIndex = deserializer.deserialize(line);
       if (partIndex == -1) {
         Serial.println("Error parsing line.");
-        success = false;
-        return Song();
+        return false;
       }
     }
 
     if(!file) {
       file.close();
       Serial.print("Song loaded from: ");
-      Serial.println(filename);  
+      Serial.println(filename);
     }
-    success = true;
-    return song;
+    return true;
   }
 
-  bool save(Song song, int index) {
+  bool save(const Song& song, int index) {
     char filename[15];
     snprintf(filename, sizeof(filename), "song_%d.dat", index);
 

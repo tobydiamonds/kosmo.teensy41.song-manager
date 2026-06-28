@@ -214,6 +214,7 @@ private:
     digitalWrite(BTN_LATCH, HIGH);
   }
 
+
   void write595byte(uint8_t data, uint8_t bitOrder = LSBFIRST) {
     shiftOut(LED_DATA, LED_CLK, bitOrder, data);
   }
@@ -492,6 +493,25 @@ public:
       analogPotBank1.scan(now);
     }
 //    testMux();
+  }
+
+  void scanInputsDebug() {
+    digitalWrite(BTN_LOAD, LOW);
+    delayMicroseconds(5);
+    digitalWrite(BTN_LOAD, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(BTN_CLK, HIGH);
+    digitalWrite(BTN_LATCH, LOW);
+
+    Serial.print("165 chain: ");
+    for(int i = 0; i < 3; i++) {
+      uint8_t val = read165byte();
+      printByte(val);
+      Serial.print(" ");
+    }
+    Serial.println();
+
+    digitalWrite(BTN_LATCH, HIGH);
   }
 
   void startSongLoading(int songNumber) {

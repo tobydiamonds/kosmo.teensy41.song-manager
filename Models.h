@@ -138,7 +138,7 @@ void printDrumSequencer(DrumSequencerPart drums) {
   Serial.println(drums.chainModeEnabled);
 }
 
-void printSongPart(Part part, int index) {
+void printSongPart(const Part& part, int index) {
   char s[100];
   sprintf(s, "part %d => pages: %d | repeats: %d | chainTo: %d", index, part.pages, part.repeats, part.chainTo);
   Serial.println(s);
@@ -147,7 +147,7 @@ void printSongPart(Part part, int index) {
   printSamplerRegisters(part.samplerData);
 }
 
-void printSong(Song song) {
+void printSong(const Song& song) {
   Serial.println("SONG:");
 
   for(int i=0; i<PARTS; i++) {

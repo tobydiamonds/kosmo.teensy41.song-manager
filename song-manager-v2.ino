@@ -24,8 +24,8 @@ DrumSequencerSlave drumSequencerSlave(9);
 SamplerSlave samplerSlave(10);
 
 
-I2CSlave* slaves[] = {&clockSlave, &drumSequencerSlave};
-KosmoMasterI2CService master(slaves, 2);
+I2CSlave* slaves[] = {&clockSlave, &drumSequencerSlave, &samplerSlave};
+KosmoMasterI2CService master(slaves, 3);
 EXTMEM AutomationController automationController;
 
 EXTMEM Song currentSong;
@@ -59,7 +59,7 @@ void setup() {
   Serial.begin(115200);
   // parts
   for(int i=0; i<PARTS; i++) {
-    parts[i] = Channel(i, 7-i); // first parameter: channel nummber, second parameter: bit index of the channel button from 595
+    parts[i] = Channel(i, 7 - (i % 8)); // first parameter: channel nummber, second parameter: bit index of the channel button from 595
     parts[i].OnPartCompleted(onPartCompleted);
     parts[i].OnBeforePartCompleted(onBeforePartCompleted);
     parts[i].OnPartStarted(onPartStarted);
@@ -86,6 +86,7 @@ void setup() {
   songRepository.begin();
 
   // master-slave
+  master.begin();
   automationController.onAutomation(onAutomation);
   master.onInstructionComplete(onInstructionComplete);
   master.onInstructionCancelled(onInstructionCancelled);
@@ -101,6 +102,9 @@ void setup() {
   serialCLI.onStopSong(onStopSong);
   serialCLI.onPrintPartSong(onPrintPartSong);
   serialCLI.onStartPartSong(onStartPartSong);
+  serialCLI.onI2CScan(onScanI2Cbus);
+  serialCLI.onI2CTest(onI2CTest);
+  serialCLI.onDebug(onDebug);
 
   Serial.println("Initialization done.");
 
@@ -141,8 +145,8 @@ void loadTheSong(int songNumber) {
   Serial.print("LOADING SONG ");
   Serial.println(songNumber);
   ui->startSongLoading(songNumber);
-  bool success;
-  currentSong = songRepository.load(songNumber, success);
+  currentSong = Song();
+  bool success = songRepository.load(songNumber, currentSong);
   if(success) {
     currentSongNumber = songNumber;
     master.cancelAllInstructions();
@@ -174,6 +178,7 @@ void loadTheSong(int songNumber) {
 
   void onStopSong() {
     master.sendInstruction(clockSlave.getAddress(), Instruction::Stop);
+    master.sendInstruction(samplerSlave.getAddress(), Instruction::Stop);
   }  
 
   void onInitSong() {
@@ -205,6 +210,18 @@ void loadTheSong(int songNumber) {
     if(partIndex >= 0) {
       applyCurrentSongToPart(partIndex);
     }
+  }
+
+  void onScanI2Cbus() {
+    master.i2cScan();
+  }
+
+  void onI2CTest() {
+    master.i2cTest();
+  }
+
+  void onDebug() {
+    ui->scanInputsDebug();
   }
 
 // ui handlers
@@ -312,8 +329,9 @@ void onPartCompleted(uint8_t partIndex, int8_t chainToPart) {
   partCompleted = true;  
 
   if(chainToPart == -1) {
-    // if not next part we want to stop the clock
+    // if not next part we want to stop the clock and sampler
     master.sendInstruction(clockSlave.getAddress(), Instruction::Stop);
+    master.sendInstruction(samplerSlave.getAddress(), Instruction::Stop);
     Serial.println("no chain - stopping the clock");
     chainToNextPart = false;
     nextPartIndex = -1;

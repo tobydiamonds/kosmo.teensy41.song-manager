@@ -89,10 +89,15 @@ private:
 
 public:
   KosmoMasterI2CService(I2CSlave* slaves[], int numSlaves)
-    : slaves(slaves), numSlaves(numSlaves) {
-      Wire.begin();
-      //Wire.setClock(400000);
-    }
+    : slaves(slaves), numSlaves(numSlaves) {}
+
+  void begin() {
+    Wire.setSDA(18);
+    Wire.setSCL(19);
+    Wire.begin();
+    Wire.setClock(100000);
+    Serial.println("I2C master initialized (Wire.begin)");
+  }
 
   void onInstructionComplete(void (*callback)(const long, const uint8_t, const Instruction, const uint8_t)) {
     instructionCompleteCallback = callback;
@@ -241,6 +246,60 @@ public:
     return part;   
   }
 
+  void i2cTest() {
+    Serial.println("I2C test - pinging all slaves for 60 seconds...");
+    unsigned long start = millis();
+    int attempts = 0;
+    int s8 = 0, s9 = 0, s10 = 0;
+    while(millis() - start < 60000) {
+      attempts++;
+      Wire.beginTransmission(8);
+      Wire.write(0);
+      if(Wire.endTransmission(true) == 0) s8++;
+
+      Wire.beginTransmission(9);
+      Wire.write(0);
+      if(Wire.endTransmission(true) == 0) s9++;
+
+      Wire.beginTransmission(10);
+      Wire.write(0);
+      if(Wire.endTransmission(true) == 0) s10++;
+
+      if(attempts % 10 == 0) {
+        char buf[120];
+        sprintf(buf, "  [%ds] addr8: %d/%d  addr9: %d/%d  addr10: %d/%d",
+          (int)((millis()-start)/1000), s8, attempts, s9, attempts, s10, attempts);
+        Serial.println(buf);
+      }
+      delay(100);
+    }
+    char buf[120];
+    sprintf(buf, "Done. addr8: %d/%d  addr9: %d/%d  addr10: %d/%d", s8, attempts, s9, attempts, s10, attempts);
+    Serial.println(buf);
+  }
+
+  void i2cScan() {
+    Serial.println("Scanning I2C bus...");
+    int found = 0;
+    for(uint8_t addr = 1; addr < 127; addr++) {
+      Wire.beginTransmission(addr);
+      Wire.write(0);
+      uint8_t error = Wire.endTransmission(true);
+      if(error == 0) {
+        Serial.print("  Device found at address ");
+        Serial.print(addr);
+        Serial.print(" (0x");
+        if(addr < 16) Serial.print("0");
+        Serial.print(addr, HEX);
+        Serial.println(")");
+        found++;
+      }
+      delayMicroseconds(100);
+    }
+    Serial.print("Scan complete. ");
+    Serial.print(found);
+    Serial.println(" device(s) found.");
+  }   
 
 };
 

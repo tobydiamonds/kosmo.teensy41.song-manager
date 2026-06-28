@@ -18,6 +18,9 @@ private:
   void (*printPartCallback)(const int) = nullptr; // part index
   // general
   void (*deserializeCommandCallback)(const String) = nullptr; // command
+  void (*i2cScanCallback)(void) = nullptr;
+  void (*debugCallback)(void) = nullptr;
+  void (*i2cTestCallback)(void) = nullptr;
 public:
 
   void onLoadSong(void (*callback)(const int)) {
@@ -59,6 +62,18 @@ public:
   void onDeserializeCommand(void (*callback)(const String)) {
     deserializeCommandCallback = callback;
   }
+
+  void onI2CScan(void (*callback)(void)) {
+    i2cScanCallback = callback;
+  }
+
+  void onDebug(void (*callback)(void)) {
+    debugCallback = callback;
+  }
+
+  void onI2CTest(void (*callback)(void)) {
+    i2cTestCallback = callback;
+  }   
 
   void run() {
     if(!Serial.available()) return;
@@ -107,10 +122,17 @@ public:
       if(index >= 0 && index < PARTS && printPartCallback) {
         printPartCallback(index);
       }
+    } else if(command=="scan") {
+      if(i2cScanCallback) i2cScanCallback();
+    } else if(command=="debug") {
+      if(debugCallback) debugCallback();
+    } else if(command=="test") {
+      if(i2cTestCallback) i2cTestCallback();
     } else {
       if(deserializeCommandCallback) deserializeCommandCallback(command);
     }
-  }     
+  }
+ 
 };
 
 #endif

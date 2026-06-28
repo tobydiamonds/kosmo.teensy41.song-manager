@@ -58,7 +58,7 @@ public:
     automationCallback = callback;
   }
 
-  void load(Part part) {
+  void load(const Part& part) {
     sequenceCount = 0;
     initialize();
     for(int i=0; i<MAX_AUTOMATION_SEQUENCES_PR_PART; i++) {
