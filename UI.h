@@ -189,11 +189,13 @@ private:
       if(!partButtonPressedCallback) continue;
 
       parts[i].Button()->update(incoming, now);
-      int indexOfSourceButton = indexOfDownButton();
+      bool pressed = parts[i].Button()->wasPressed();
+      if(!pressed) continue;
 
-      if(programming && parts[i].Button()->wasPressed() && indexOfSourceButton != -1 && indexOfSourceButton != i) {
+      int indexOfSourceButton = indexOfDownButton();
+      if(programming && indexOfSourceButton != -1 && indexOfSourceButton != i) {
         copyPartCallback(indexOfSourceButton, i);
-      } else if(parts[i].Button()->wasPressed()) {
+      } else {
         partButtonPressedCallback(i, parts[i], programming, songIsLoading);
       }      
     }
