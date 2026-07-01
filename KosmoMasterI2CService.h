@@ -88,6 +88,8 @@ private:
 
 
 public:
+  bool verbose = false;
+
   KosmoMasterI2CService(I2CSlave* slaves[], int numSlaves)
     : slaves(slaves), numSlaves(numSlaves) {}
 

@@ -43,6 +43,7 @@ unsigned long lastClockPulse = 0;
 bool edgeDetected = false;
 bool hasPulse = false;
 bool reset = false;
+bool verboseMode = false;
 
 int ppqnCounter = 0;
 int currentStep = 0;
@@ -105,8 +106,14 @@ void setup() {
   serialCLI.onI2CScan(onScanI2Cbus);
   serialCLI.onI2CTest(onI2CTest);
   serialCLI.onDebug(onDebug);
+  serialCLI.onVerbose(onVerbose);
+  serialCLI.onHwtest(onHwtest);
+  serialCLI.onSim(onSimCommand);
 
   Serial.println("Initialization done.");
+  Serial.println("Waiting for I2C slaves to boot...");
+  delay(3000);
+  master.i2cScan();
   loadTheSong(1);
 
 
@@ -225,6 +232,77 @@ void loadTheSong(int songNumber) {
     ui->scanInputsDebug();
   }
 
+  void onVerbose(bool on) {
+    verboseMode = on;
+    master.verbose = on;
+    Serial.println(on ? "VERBOSE ON" : "VERBOSE OFF");
+  }
+
+  void onHwtest(bool on) {
+    ui->hwtestMode = on;
+    Serial.println(on ? "HWTEST ON" : "HWTEST OFF");
+  }
+
+  void onSimCommand(const String args) {
+    int size = 0;
+    String* tokens = splitString(args, ' ', size);
+    if(size == 0) return;
+
+    if(tokens[0] == "press" && size >= 2) {
+      int partIndex = tokens[1].toInt();
+      if(partIndex >= 0 && partIndex < PARTS) {
+        onPartButtonPressed(partIndex, parts[partIndex], ui->isProgramming(), ui->isSongLoading());
+        Serial.print("SIM:press ");
+        Serial.println(partIndex);
+      }
+    } else if(tokens[0] == "pages" && size >= 3) {
+      int partIndex = tokens[1].toInt();
+      int value = tokens[2].toInt();
+      if(partIndex >= 0 && partIndex < PARTS) {
+        parts[partIndex].SetPageCountRaw(value);
+        currentSong.parts[partIndex].pages = parts[partIndex].PageCount();
+        Serial.print("SIM:pages ");
+        Serial.print(partIndex);
+        Serial.print(" ");
+        Serial.println(value);
+      }
+    } else if(tokens[0] == "repeats" && size >= 3) {
+      int partIndex = tokens[1].toInt();
+      int value = tokens[2].toInt();
+      if(partIndex >= 0 && partIndex < PARTS) {
+        parts[partIndex].SetRepeatsRaw(value);
+        currentSong.parts[partIndex].repeats = parts[partIndex].Repeats();
+        Serial.print("SIM:repeats ");
+        Serial.print(partIndex);
+        Serial.print(" ");
+        Serial.println(value);
+      }
+    } else if(tokens[0] == "chainto" && size >= 3) {
+      int partIndex = tokens[1].toInt();
+      int value = tokens[2].toInt();
+      if(partIndex >= 0 && partIndex < PARTS) {
+        parts[partIndex].SetChainToRaw(value);
+        currentSong.parts[partIndex].chainTo = parts[partIndex].ChainTo();
+        Serial.print("SIM:chainto ");
+        Serial.print(partIndex);
+        Serial.print(" ");
+        Serial.println(value);
+      }
+    } else if(tokens[0] == "program") {
+      ui->setProgramming(true);
+      onProgrammingStarted(currentSongNumber);
+      Serial.println("SIM:program");
+    } else if(tokens[0] == "endprogram") {
+      ui->setProgramming(false);
+      onProgrammingEnded(currentSongNumber);
+      Serial.println("SIM:endprogram");
+    } else if(tokens[0] == "cancel") {
+      ui->setProgramming(false);
+      onProgrammingCancelled(currentSongNumber);
+      Serial.println("SIM:cancel");
+    }
+  }
+
 // ui handlers
 
 void onSongNumberSelected(int songNumber) {
@@ -327,19 +405,23 @@ void onBeforePartCompleted(uint8_t partIndex, int8_t chainToPart) {
 
 void onPartCompleted(uint8_t partIndex, int8_t chainToPart) {
   completedPartIndex = partIndex;
-  partCompleted = true;  
+  partCompleted = true;
 
   if(chainToPart == -1) {
-    // if not next part we want to stop the clock and sampler
     master.sendInstruction(clockSlave.getAddress(), Instruction::Stop);
     master.sendInstruction(samplerSlave.getAddress(), Instruction::Stop);
     Serial.println("no chain - stopping the clock");
     chainToNextPart = false;
     nextPartIndex = -1;
   } else {
-    // otherwise we want to chain to the next part 
     nextPartIndex = chainToPart;
     chainToNextPart = true;
+    if(verboseMode) {
+      Serial.print("[SM] CHAIN:");
+      Serial.print(partIndex);
+      Serial.print("->");
+      Serial.println(chainToPart);
+    }
   }
 }
 
@@ -370,9 +452,11 @@ void onInstructionCancelled(long traceId, uint8_t slaveAddress, Instruction inst
 }
 
 void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instruction, uint8_t partIndex) {
-  // char s[100];
-  // sprintf(s, "instruction completed => %d  slave:%d  part-index: %d  trace-id: %ld", instruction, slaveAddress, partIndex, traceId);
-  // Serial.println(s);
+  if(verboseMode) {
+    char s[80];
+    sprintf(s, "[SM] TX:%d 0x%02X part:%d ok", slaveAddress, instruction, partIndex);
+    Serial.println(s);
+  }
 
   if(traceId == songLoaderInstruction.getTraceId()) {
     songLoaderInstruction.markCompleted(slaveAddress, instruction, partIndex);
@@ -437,10 +521,12 @@ void onClockPulse() {
 void triggerClockPulse() {
   ppqnCounter = (ppqnCounter + 1) % 24;
   parts[currentPartIndex].Pulse(ppqnCounter);
-  // for(int i=0; i<PARTS; i++)
-  //   parts[i].Pulse(ppqnCounter);
   if(ppqnCounter == 0) {
     ui->clock(now);
+    if(verboseMode) {
+      Serial.print("[SM] BEAT part:");
+      Serial.println(currentPartIndex);
+    }
   }
 }
 

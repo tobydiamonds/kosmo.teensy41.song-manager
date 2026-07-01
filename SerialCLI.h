@@ -21,6 +21,9 @@ private:
   void (*i2cScanCallback)(void) = nullptr;
   void (*debugCallback)(void) = nullptr;
   void (*i2cTestCallback)(void) = nullptr;
+  void (*verboseCallback)(bool) = nullptr;
+  void (*hwtestCallback)(bool) = nullptr;
+  void (*simCallback)(const String) = nullptr;
 public:
 
   void onLoadSong(void (*callback)(const int)) {
@@ -73,7 +76,19 @@ public:
 
   void onI2CTest(void (*callback)(void)) {
     i2cTestCallback = callback;
-  }   
+  }
+
+  void onVerbose(void (*callback)(bool)) {
+    verboseCallback = callback;
+  }
+
+  void onHwtest(void (*callback)(bool)) {
+    hwtestCallback = callback;
+  }
+
+  void onSim(void (*callback)(const String)) {
+    simCallback = callback;
+  }
 
   void run() {
     if(!Serial.available()) return;
@@ -128,6 +143,16 @@ public:
       if(debugCallback) debugCallback();
     } else if(command=="test") {
       if(i2cTestCallback) i2cTestCallback();
+    } else if(command=="verbose on") {
+      if(verboseCallback) verboseCallback(true);
+    } else if(command=="verbose off") {
+      if(verboseCallback) verboseCallback(false);
+    } else if(command=="hwtest on") {
+      if(hwtestCallback) hwtestCallback(true);
+    } else if(command=="hwtest off") {
+      if(hwtestCallback) hwtestCallback(false);
+    } else if(command.indexOf("sim ")==0) {
+      if(simCallback) simCallback(command.substring(4));
     } else {
       if(deserializeCommandCallback) deserializeCommandCallback(command);
     }

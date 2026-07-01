@@ -103,7 +103,6 @@ private:
 
   void scanOperationsBoard(unsigned long now) {
     uint8_t incoming = read165byte();
-    //printByteln(incoming);
     if(incoming == 0xFF) return;
 
     programBtn.update(incoming, now);
@@ -111,6 +110,14 @@ private:
     if(!programming) {
       nextSongBtn.update(incoming, now);
       prevSongBtn.update(incoming, now);
+    }
+
+    if(hwtestMode) {
+      if(programBtn.wasPressed()) Serial.println("BTN:PROGRAM");
+      if(loadBtn.wasPressed()) Serial.println("BTN:LOAD");
+      if(nextSongBtn.wasPressed()) Serial.println("BTN:NEXT_SONG");
+      if(prevSongBtn.wasPressed()) Serial.println("BTN:PREV_SONG");
+      return;
     }
 
     // INIT SONG
@@ -191,6 +198,11 @@ private:
       parts[i].Button()->update(incoming, now);
       bool pressed = parts[i].Button()->wasPressed();
       if(!pressed) continue;
+
+      if(hwtestMode) {
+        Serial.print("BTN:PART_");
+        Serial.println(i);
+      }
 
       int indexOfSourceButton = indexOfDownButton();
       if(programming && indexOfSourceButton != -1 && indexOfSourceButton != i) {
@@ -374,13 +386,28 @@ private:
   }  
 
   void onAnalogPotChangedHandler(int partIndex, int pot, uint16_t value) {
-    // char s[100];
-    // sprintf(s, "part: %d  pot: %d  value: %d", partIndex, pot, value);
-    // Serial.println(s);
     // ###handle bad pots###
     if(partIndex == 2 && pot == 0) return;
     if(partIndex == 4 && pot == 1) return;
     if(partIndex == 6 && pot == 0) return;
+
+    if(hwtestMode) {
+      Serial.print("POT:");
+      Serial.print(pot);
+      Serial.print(" ch:");
+      Serial.print(partIndex);
+      Serial.print(" raw:");
+      Serial.print(value);
+      if(pot==0) { Serial.print(" pages:"); Serial.println(map(value, 0, 1000, 0, 4)); }
+      else if(pot==1) {
+        int r = (value < 100) ? 0 : (value > 923) ? 32 : map(value, 100, 923, 1, 31);
+        Serial.print(" repeats:"); Serial.println(r);
+      }
+      else if(pot==2) {
+        int c = (value < 100) ? -1 : (value > 923) ? 15 : map(value, 100, 923, 0, 14);
+        Serial.print(" chainTo:"); Serial.println(c);
+      }
+    }
 
     if(pot==0) {
       parts[partIndex].SetPageCountRaw(value);
@@ -389,12 +416,14 @@ private:
     } else if(pot==2) {
       parts[partIndex].SetChainToRaw(value);
     }
-
-    // if(partProgrammingChangedCallback)
-    //   partProgrammingChangedCallback(partIndex, parts[partIndex]);
   }
 
 public:
+  bool hwtestMode = false;
+
+  bool isProgramming() { return programming; }
+  bool isSongLoading() { return songIsLoading; }
+  void setProgramming(bool value) { programming = value; }
 
   SongManagerUI(Channel (&partsArray)[PARTS]) 
     : programBtn(PROGRAM_BTN), 
