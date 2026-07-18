@@ -398,12 +398,14 @@ void onPartProgrammingChanged(const int partIndex, Channel part) {
 }
 
 void onBeforePartCompleted(uint8_t partIndex, int8_t chainToPart) {
+  if(ui->isProgramming()) return;
   if(chainToPart == -1) return;
   // send the next part index to slaves so they can prepare data on the next down beat
   master.sendCurrentPartIndex(chainToPart);
 }
 
 void onPartCompleted(uint8_t partIndex, int8_t chainToPart) {
+  if(ui->isProgramming()) return;
   completedPartIndex = partIndex;
   partCompleted = true;
 
@@ -554,29 +556,35 @@ void loop() {
   // handle clock in
   if(edgeDetected) {
     edgeDetected = false;
-    if(!AnyPartsPlaying())
-      parts[currentPartIndex].Start();
-    triggerClockPulse();
-  }  
-
-  if(partCompleted && ppqnCounter == 0 && completedPartIndex >= 0) {
-    partCompleted = false;
-    parts[completedPartIndex].Stop();
+    if(!ui->isProgramming()) {
+      if(!AnyPartsPlaying())
+        parts[currentPartIndex].Start();
+      triggerClockPulse();
+    }
   }
 
-  if(chainToNextPart && ppqnCounter == 0 && nextPartIndex >= 0) {
-    chainToNextPart = false;
-    parts[nextPartIndex].Start();
+  if(!ui->isProgramming()) {
+    if(partCompleted && ppqnCounter == 0 && completedPartIndex >= 0) {
+      partCompleted = false;
+      parts[completedPartIndex].Stop();
+    }
+
+    if(chainToNextPart && ppqnCounter == 0 && nextPartIndex >= 0) {
+      chainToNextPart = false;
+      parts[nextPartIndex].Start();
+    }
   }
 
   ui->scan(now);
-  automationController.run(now, currentStep);
+  if(!ui->isProgramming()) {
+    automationController.run(now, currentStep);
+  }
   master.run(now);
 
   for(int i=0; i<PARTS; i++) {
-    parts[i].Run(now);  
+    parts[i].Run(now);
   }
-  ui->update(now);   
+  ui->update(now);
 
   serialCLI.run();
 }

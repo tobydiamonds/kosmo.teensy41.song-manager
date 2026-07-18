@@ -30,7 +30,6 @@ private:
     uint32_t sum = 0;
     for (uint8_t i = 0; i < _samplesPerRead; ++i) {
       sum += analogRead(pin);
-      delayMicroseconds(5);
     }
     uint16_t avg = (uint16_t)(sum / _samplesPerRead);
     return (uint16_t)(1023 - avg);

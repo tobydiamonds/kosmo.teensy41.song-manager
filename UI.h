@@ -61,6 +61,7 @@ private:
 
   unsigned long lastUpdate;
   unsigned long lastScan;
+  int currentDigit = 0;
   unsigned long lastProgrammingLed = 0;
   unsigned long lastSongLoadingLed = 0;
   unsigned long lastSongLoading = 0;
@@ -495,8 +496,8 @@ public:
     pinMode(MUX_S2, OUTPUT);
     pinMode(MUX_S3, OUTPUT);
 
-    analogReadResolution(10);  // Set resolution to 10 bits
-    analogReadAveraging(4);    // Average over 4 samples for stability    
+    analogReadResolution(10);
+    analogReadAveraging(16);
 
     analogPotBank1.onChange(SongManagerUI::staticAnalogPotChangedHandler);
     analogPotBank1.setHysteresis(10);
@@ -510,7 +511,7 @@ public:
     analogPotBank1.setPotHysteresis(6, 2, 20);
     analogPotBank1.setPotHysteresis(7, 2, 20);
 
-    analogPotBank1.setSamplesPerRead(5);
+    analogPotBank1.setSamplesPerRead(3);
     analogPotBank1.begin();    
   }
 
@@ -518,10 +519,12 @@ public:
     if(now > (lastScan + SCAN_INTERVAL)) {
       lastScan = now;
       scanInputs(now);
+      refreshDisplay();
     }
     if(programming && now > (lastPotScan + POT_SCAN_INTERVAL)) {
       lastPotScan = now;
       analogPotBank1.scan(now);
+      refreshDisplay();
     }
   }
 
@@ -600,21 +603,23 @@ public:
     }
 
 
-    for(int digit=0; digit<DIGITS; digit++) {
-      digitalWrite(LED_LATCH, LOW);
-      delayMicroseconds(1);
-      updateOperationsBoardDigit(digit);
-      for(int partIndex=0; partIndex<PARTS; partIndex++) {
-        if(partIndex==4) {
-          write595byte(0);
-          write595byte(0);
-        } else {
-          updatePartDigit(partIndex, digit);
-        }
+    refreshDisplay();
+  }
+
+  void refreshDisplay() {
+    digitalWrite(LED_LATCH, LOW);
+    delayMicroseconds(1);
+    updateOperationsBoardDigit(currentDigit);
+    for(int partIndex=0; partIndex<PARTS; partIndex++) {
+      if(partIndex==4) {
+        write595byte(0);
+        write595byte(0);
+      } else {
+        updatePartDigit(partIndex, currentDigit);
       }
-      digitalWrite(LED_LATCH, HIGH);
-      //delayMicroseconds(10);
     }
+    digitalWrite(LED_LATCH, HIGH);
+    currentDigit = (currentDigit + 1) % DIGITS;
   }
 
   void reset() {
