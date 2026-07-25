@@ -109,6 +109,7 @@ void setup() {
   serialCLI.onVerbose(onVerbose);
   serialCLI.onHwtest(onHwtest);
   serialCLI.onSim(onSimCommand);
+  serialCLI.onStatus(onStatus);
 
   Serial.println("Initialization done.");
   Serial.println("Waiting for I2C slaves to boot...");
@@ -205,6 +206,7 @@ void loadTheSong(int songNumber) {
   void onStartPartSong(const int partIndex) {
     master.sendCurrentPartIndex(partIndex);
     master.sendInstruction(clockSlave.getAddress(), Instruction::Start);
+    hasPulse = false;
     parts[partIndex].Start();
   }  
 
@@ -230,6 +232,23 @@ void loadTheSong(int songNumber) {
 
   void onDebug() {
     ui->scanInputsDebug();
+  }
+
+  void onStatus() {
+    char s[200];
+    sprintf(s, "STATUS: currentPartIndex=%d ppqnCounter=%d hasPulse=%d edgeDetected=%d",
+      currentPartIndex, ppqnCounter, hasPulse, edgeDetected);
+    Serial.println(s);
+    sprintf(s, "  partCompleted=%d completedPartIndex=%d chainToNextPart=%d nextPartIndex=%d",
+      partCompleted, completedPartIndex, chainToNextPart, nextPartIndex);
+    Serial.println(s);
+    for(int i=0; i<PARTS; i++) {
+      if(parts[i].PageCount() == 0) continue;
+      sprintf(s, "  part[%d]: started=%d pages=%d step=%d lastStep=%d repeats=%d remaining=%d chainTo=%d",
+        i, parts[i].IsStarted(), parts[i].PageCount(), parts[i].CurrentStep(), parts[i].LastStep(),
+        parts[i].Repeats(), parts[i].RemainingRepeats(), parts[i].ChainTo());
+      Serial.println(s);
+    }
   }
 
   void onVerbose(bool on) {
@@ -382,13 +401,18 @@ void onPartButtonPressed(const int partIndex, Channel& channel, bool programming
     channel.SetClockPart(incoming.clockData);
     channel.SetDrumSequencerPart(incoming.drumSequencerData);
     channel.SetSamplerPart(incoming.samplerData);
-  } else if(parts[currentPartIndex].IsStarted()) {
+  } else if(parts[currentPartIndex].IsStarted() && (now - lastClockPulse) < 2000) {
     // set part that were pressed as next part to the current part
     parts[currentPartIndex].SetChainTo(partIndex);
   } else {
+    // stop any stale part
+    if(parts[currentPartIndex].IsStarted()) {
+      parts[currentPartIndex].Stop();
+    }
     // send part to slaves
     master.sendCurrentPartIndex(partIndex);
     master.sendInstruction(clockSlave.getAddress(), Instruction::Start);
+    hasPulse = false;
     channel.Start();
   }
 }
@@ -400,12 +424,19 @@ void onPartProgrammingChanged(const int partIndex, Channel part) {
 void onBeforePartCompleted(uint8_t partIndex, int8_t chainToPart) {
   if(ui->isProgramming()) return;
   if(chainToPart == -1) return;
+  if(chainToPart == partIndex) return;
   // send the next part index to slaves so they can prepare data on the next down beat
   master.sendCurrentPartIndex(chainToPart);
 }
 
 void onPartCompleted(uint8_t partIndex, int8_t chainToPart) {
   if(ui->isProgramming()) return;
+
+  if(chainToPart == partIndex) {
+    // self-chain: just keep running, don't stop/start (preserves repeat counter intent)
+    return;
+  }
+
   completedPartIndex = partIndex;
   partCompleted = true;
 
@@ -467,6 +498,17 @@ void onInstructionComplete(long traceId, uint8_t slaveAddress, Instruction instr
       Serial.println("SONG LOADED");
       songLoaderInstruction.clear();
       applyCurrentSongToParts();
+      for(int i=0; i<PARTS; i++) {
+        parts[i].Reset();
+      }
+      currentPartIndex = 0;
+      ppqnCounter = 0;
+      hasPulse = false;
+      lastClockPulse = millis();
+      partCompleted = false;
+      chainToNextPart = false;
+      completedPartIndex = -1;
+      nextPartIndex = -1;
       ui->endSongLoading();
     }
   }
@@ -483,7 +525,7 @@ bool AnyPartsPlaying() {
 #define MOVING_AVERAGE_SIZE 5
 unsigned long lastPulseTime = 0;
 unsigned long pulseInterval = 0;
-float bpmValues[MOVING_AVERAGE_SIZE];
+float bpmValues[MOVING_AVERAGE_SIZE] = {120, 120, 120, 120, 120};
 int bpmIndex = 0;
 
 void onClockPulse() {
@@ -492,6 +534,7 @@ void onClockPulse() {
 
   if (pulseInterval > DEBOUNCE_THRESHOLD) {
     lastPulseTime = currentTime;
+    lastClockPulse = millis();
     float currentBPM = (60000000.0 / pulseInterval) / 24;
 
     // Store BPM in moving average array
@@ -506,16 +549,11 @@ void onClockPulse() {
     float averageBPM = bpmSum / MOVING_AVERAGE_SIZE;
 
     // Check stability
-    if (abs(currentBPM - averageBPM) < 5.0) {  // Adjust threshold as needed
+    if (abs(currentBPM - averageBPM) < 5.0) {
       edgeDetected = true;
-      lastClockPulse = now;
     } else {
       edgeDetected = false;
     }
-
-    // char s[100];
-    // sprintf(s, "Current BPM: %f, Average BPM: %f", currentBPM, averageBPM);
-    // Serial.println(s);
   }
   hasPulse = true;
 }
@@ -548,6 +586,7 @@ void loop() {
       for(int i=0; i<PARTS; i++) {
         parts[i].Reset();
       }
+      master.sendInstruction(samplerSlave.getAddress(), Instruction::Stop);
       currentPartIndex = 0;
       ui->reset();
     }
@@ -557,8 +596,6 @@ void loop() {
   if(edgeDetected) {
     edgeDetected = false;
     if(!ui->isProgramming()) {
-      if(!AnyPartsPlaying())
-        parts[currentPartIndex].Start();
       triggerClockPulse();
     }
   }

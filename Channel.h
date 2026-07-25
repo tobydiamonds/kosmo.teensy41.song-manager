@@ -170,6 +170,14 @@ public:
     return _pageCount;
   }
 
+  uint8_t CurrentStep() {
+    return _currentStep;
+  }
+
+  uint8_t LastStep() {
+    return _lastStep;
+  }
+
   uint8_t Repeats() {
     return _repeats;
   }

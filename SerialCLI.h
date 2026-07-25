@@ -24,6 +24,7 @@ private:
   void (*verboseCallback)(bool) = nullptr;
   void (*hwtestCallback)(bool) = nullptr;
   void (*simCallback)(const String) = nullptr;
+  void (*statusCallback)(void) = nullptr;
 public:
 
   void onLoadSong(void (*callback)(const int)) {
@@ -90,6 +91,10 @@ public:
     simCallback = callback;
   }
 
+  void onStatus(void (*callback)(void)) {
+    statusCallback = callback;
+  }
+
   void run() {
     if(!Serial.available()) return;
 
@@ -151,6 +156,8 @@ public:
       if(hwtestCallback) hwtestCallback(true);
     } else if(command=="hwtest off") {
       if(hwtestCallback) hwtestCallback(false);
+    } else if(command=="status") {
+      if(statusCallback) statusCallback();
     } else if(command.indexOf("sim ")==0) {
       if(simCallback) simCallback(command.substring(4));
     } else {
