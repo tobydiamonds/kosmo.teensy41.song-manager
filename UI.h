@@ -74,6 +74,7 @@ private:
   bool songLoadingLed;
   bool programming;
   bool clockInLed;
+  int selectedPart = -1;
 
   int selectedSongNumber;
   int prevSongNumber;
@@ -159,22 +160,31 @@ private:
       if(songNumberSelectedCallback) songNumberSelectedCallback(selectedSongNumber);
     } 
     // CANCEL PROGRAMMING
-    if(programming && loadBtn.wasPressed()) { 
+    if(programming && loadBtn.wasPressed()) {
+      if(selectedPart != -1) {
+        parts[selectedPart].SetProgrammingBlink(false);
+        selectedPart = -1;
+      }
       programming = false;
       programmingLed = false;
       if(programmingCancelledCallback)programmingCancelledCallback(selectedSongNumber);
-    } 
-    if(programBtn.wasPressed()) { 
+    }
+    if(programBtn.wasPressed()) {
     // START PROGRAMMING
-      if(!programming) {                      
+      if(!programming) {
         programming = true;
+        selectedPart = -1;
         if(programmingStartedCallback)programmingStartedCallback(selectedSongNumber);
-      } else { 
-    // END PROGRAMMING                          
+      } else {
+    // END PROGRAMMING
         programming = false;
         if(programmingEndedCallback)programmingEndedCallback(selectedSongNumber);
+        if(selectedPart != -1) {
+          parts[selectedPart].SetProgrammingBlink(false);
+          selectedPart = -1;
+        }
       }
-    } 
+    }
   }  
 
   int indexOfDownButton() {
@@ -425,6 +435,19 @@ public:
   bool isProgramming() { return programming; }
   bool isSongLoading() { return songIsLoading; }
   void setProgramming(bool value) { programming = value; }
+  int getSelectedPart() { return selectedPart; }
+  void selectPart(int index) {
+    if(selectedPart != -1)
+      parts[selectedPart].SetProgrammingBlink(false);
+    selectedPart = index;
+    if(selectedPart != -1)
+      parts[selectedPart].SetProgrammingBlink(true);
+  }
+  void deselectPart() {
+    if(selectedPart != -1)
+      parts[selectedPart].SetProgrammingBlink(false);
+    selectedPart = -1;
+  }
 
   SongManagerUI(Channel (&partsArray)[PARTS]) 
     : programBtn(PROGRAM_BTN), 
@@ -500,7 +523,7 @@ public:
     analogReadAveraging(16);
 
     analogPotBank1.onChange(SongManagerUI::staticAnalogPotChangedHandler);
-    analogPotBank1.setHysteresis(10);
+    analogPotBank1.setHysteresis(20);
     analogPotBank1.setPotHysteresis(2, 0, 20);
     analogPotBank1.setPotHysteresis(3, 0, 20);
     analogPotBank1.setPotHysteresis(6, 0, 20);
@@ -521,9 +544,9 @@ public:
       scanInputs(now);
       refreshDisplay();
     }
-    if(programming && now > (lastPotScan + POT_SCAN_INTERVAL)) {
+    if(programming && selectedPart != -1 && now > (lastPotScan + POT_SCAN_INTERVAL)) {
       lastPotScan = now;
-      analogPotBank1.scan(now);
+      analogPotBank1.scanChannel(selectedPart, now);
       refreshDisplay();
     }
   }

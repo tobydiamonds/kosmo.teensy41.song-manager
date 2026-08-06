@@ -29,6 +29,9 @@ private:
   bool _pageLedState[4] = {false};
   unsigned long _lastCurrentPageLedTime = 0;
   bool _quaterNodeEdge = false;
+  bool _programmingBlink = false;
+  bool _programmingBlinkState = false;
+  unsigned long _lastProgrammingBlinkTime = 0;
 
   // events
   PartCompleted _onPartCompleted = nullptr;
@@ -146,6 +149,16 @@ public:
   }
 
   void Run(unsigned long now) {
+    if(_programmingBlink) {
+      if(now - _lastProgrammingBlinkTime > 500) {
+        _lastProgrammingBlinkTime = now;
+        _programmingBlinkState = !_programmingBlinkState;
+        for(int i=0; i<4; i++) {
+          _pageLedState[i] = (i < _pageCount) && _programmingBlinkState;
+        }
+      }
+      return;
+    }
     if(!_started) return;
     if(_quaterNodeEdge) {
       _quaterNodeEdge = false;
@@ -154,6 +167,15 @@ public:
           _pageLedState[i] = i < _pageCount;
         else
           _pageLedState[i] = !_pageLedState[i];
+      }
+    }
+  }
+
+  void SetProgrammingBlink(bool enabled) {
+    _programmingBlink = enabled;
+    if(!enabled) {
+      for(int i=0; i<4; i++) {
+        _pageLedState[i] = i < _pageCount;
       }
     }
   }
@@ -195,8 +217,10 @@ public:
     _lastStep = pageCount * 16 - 1;
     if(pageCount == 0) _lastStep = 0;
 
-    for(int i=0; i<4; i++) {
-      _pageLedState[i] = i < _pageCount;
+    if(!_programmingBlink) {
+      for(int i=0; i<4; i++) {
+        _pageLedState[i] = i < _pageCount;
+      }
     }
   }
 
@@ -208,14 +232,14 @@ public:
   void SetRepeats(uint8_t repeats) {
     _repeats = repeats;
     _remainingRepeats = repeats;
-    _repeatsRaw = map(_repeats, 0, 32, 0, 1023);
+    _repeatsRaw = map(_repeats, 0, 16, 0, 1023);
   }
 
   void SetRepeatsRaw(uint16_t raw) {
     _repeatsRaw = raw;
-    if(raw < 100) SetRepeats(0);
-    else if(raw > 923) SetRepeats(32);
-    else SetRepeats(map(raw, 100, 923, 1, 31));
+    if(raw < 200) SetRepeats(0);
+    else if(raw > 923) SetRepeats(16);
+    else SetRepeats(map(raw, 200, 923, 1, 15));
   }
 
   void SetChainTo(int8_t chainTo) {

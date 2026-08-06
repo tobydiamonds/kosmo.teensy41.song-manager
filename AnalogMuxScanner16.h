@@ -87,6 +87,37 @@ public:
     _onChange = onChangeHandler;
   }
 
+  void scanChannel(int channel, unsigned long now) {
+    if (channel < 0 || channel >= _channels) return;
+    if (now - _lastScanMs < _scanIntervalMs) return;
+    _lastScanMs = now;
+
+    digitalWrite(_s0, (channel & 0x01));
+    digitalWrite(_s1, (channel & 0x02) >> 1);
+    digitalWrite(_s2, (channel & 0x04) >> 2);
+    digitalWrite(_s3, (channel & 0x08) >> 3);
+
+    delayMicroseconds(20);
+
+    for (int i = 0; i < 3; ++i) {
+      uint16_t raw = readInvertedAnalog(_a[i]);
+      uint16_t idx = i * PARTS + channel;
+
+      if (!_hasStable[idx]) {
+        _stable[idx] = raw;
+        _hasStable[idx] = true;
+        if (_onChange) _onChange(channel, i, _stable[idx]);
+      } else {
+        int diff = (int)raw - (int)_stable[idx];
+        if (diff < 0) diff = -diff;
+        if (diff >= _potHysteresis[idx]) {
+          _stable[idx] = raw;
+          if (_onChange) _onChange(channel, i, _stable[idx]);
+        }
+      }
+    }
+  }
+
   void scan(unsigned long now) {
     if (now - _lastScanMs < _scanIntervalMs) return;
     _lastScanMs = now;
@@ -104,15 +135,8 @@ public:
       readInvertedAnalog(_a[2])
     };
 
-    // char s[100];
-    // sprintf(s, "mux: %d  v1: %d  v2: %d  v3: %d", _mux, values[0], values[1], values[2]);
-    // Serial.println(s);    
-
     for (int i = 0; i < 3; ++i) {
-      //int off = 2 * i;                       
-      //int ch  = (int)(_mux + off) / 3 + off; 
       int ch = _mux;
-      //int pot = (int)(_mux + off) % 3;       
       int pot = i;
 
       if (ch < 0 || ch >= _channels) continue;
@@ -123,17 +147,13 @@ public:
       if (!_hasStable[idx]) {
         _stable[idx] = raw;
         _hasStable[idx] = true;
-        if (_onChange) _onChange(ch, pot, _stable[idx]); // until more muxes
+        if (_onChange) _onChange(ch, pot, _stable[idx]);
       } else {
         int diff = (int)raw - (int)_stable[idx];
         if (diff < 0) diff = -diff;
         if (diff >= _potHysteresis[idx]) {
-          // char s[100];
-          // sprintf(s, "idx: %d  ch: %d  pot: %d  stable: %d  raw: %d  diff: %d  hyst: %d", idx, ch, pot, _stable[idx], raw, diff, _potHysteresis[idx]);
-          // Serial.println(s);
-
           _stable[idx] = raw;
-          if (_onChange) _onChange(ch, pot, _stable[idx]);  // until more muxes
+          if (_onChange) _onChange(ch, pot, _stable[idx]);
         }
       }
     }

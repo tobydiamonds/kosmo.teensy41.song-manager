@@ -211,7 +211,18 @@ void loadTheSong(int songNumber) {
   }  
 
   void onPrintPartSong(const int partIndex) {
-    printSongPart(currentSong.parts[partIndex], partIndex);
+    if(ui->isProgramming()) {
+      Part livePart;
+      livePart.pages = parts[partIndex].PageCount();
+      livePart.repeats = parts[partIndex].Repeats();
+      livePart.chainTo = parts[partIndex].ChainTo();
+      livePart.clockData = parts[partIndex].GetClockPart();
+      livePart.drumSequencerData = parts[partIndex].GetDrumSequencerPart();
+      livePart.samplerData = parts[partIndex].GetSamplerPart();
+      printSongPart(livePart, partIndex);
+    } else {
+      printSongPart(currentSong.parts[partIndex], partIndex);
+    }
   }    
 
   void onDeserializeCommand(const String command) {
@@ -309,13 +320,16 @@ void loadTheSong(int songNumber) {
       }
     } else if(tokens[0] == "program") {
       ui->setProgramming(true);
+      ui->deselectPart();
       onProgrammingStarted(currentSongNumber);
       Serial.println("SIM:program");
     } else if(tokens[0] == "endprogram") {
-      ui->setProgramming(false);
       onProgrammingEnded(currentSongNumber);
+      ui->deselectPart();
+      ui->setProgramming(false);
       Serial.println("SIM:endprogram");
     } else if(tokens[0] == "cancel") {
+      ui->deselectPart();
       ui->setProgramming(false);
       onProgrammingCancelled(currentSongNumber);
       Serial.println("SIM:cancel");
@@ -338,7 +352,40 @@ void onProgrammingStarted(int songNumber) {
   Serial.println(songNumber);
 }
 
+void sendPartToSlaves(int partIndex) {
+  Part part;
+  part.clockData = parts[partIndex].GetClockPart();
+  part.drumSequencerData = parts[partIndex].GetDrumSequencerPart();
+  part.samplerData = parts[partIndex].GetSamplerPart();
+  master.sendPartToSlaves(part, partIndex);
+  master.sendCurrentPartIndex(partIndex);
+  Serial.print("sent part data to slaves for part ");
+  Serial.println(partIndex);
+}
+
+void capturePartFromSlaves(int partIndex) {
+  Part incoming = master.retrievePartFromSlaves();
+  parts[partIndex].SetClockPart(incoming.clockData);
+  parts[partIndex].SetDrumSequencerPart(incoming.drumSequencerData);
+  parts[partIndex].SetSamplerPart(incoming.samplerData);
+  Serial.print("captured part ");
+  Serial.println(partIndex);
+}
+
+void revertPart(int partIndex) {
+  parts[partIndex].SetPageCount(currentSong.parts[partIndex].pages);
+  parts[partIndex].SetRepeats(currentSong.parts[partIndex].repeats);
+  parts[partIndex].SetChainTo(currentSong.parts[partIndex].chainTo);
+  parts[partIndex].SetClockPart(currentSong.parts[partIndex].clockData);
+  parts[partIndex].SetDrumSequencerPart(currentSong.parts[partIndex].drumSequencerData);
+  parts[partIndex].SetSamplerPart(currentSong.parts[partIndex].samplerData);
+}
+
 void onProgrammingEnded(int songNumber) {
+  int selected = ui->getSelectedPart();
+  if(selected != -1) {
+    capturePartFromSlaves(selected);
+  }
   // copy all part data into song parts
   for(int i=0; i<PARTS; i++) {
     currentSong.parts[i].pages = parts[i].PageCount();
@@ -375,41 +422,55 @@ void onCopyPart(const int sourcePartIndex, const int destPartIndex) {
 // parts
 
 void onPartButtonPressed(const int partIndex, Channel& channel, bool programming, bool songIsLoading) {
-  // char s[100];
-  // sprintf(s, "button pressed: %d  programming: %s  loading: %s", partIndex, programming ? "yes" : "no", songIsLoading ? "yes" : "no");
-  // Serial.println(s);
-  // channel.Print();
   if(songIsLoading) return;
-  if(programming && channel.PageCount()==0) { 
-    // when we click the button for a part that is not in use we want to initialize slaves with default values to simplify starting a new part
-    channel.SetPageCount(1);
-    channel.SetRepeats(4);
-    channel.SetChainTo(partIndex); // chain to self
-    channel.SetClockPart(InitClockPart());
-    channel.SetDrumSequencerPart(InitDrumSequencerPart());
-    channel.SetSamplerPart(InitSamplerPart());    
-    Serial.print("initialized channel: ");
-    Serial.println(partIndex);
-    channel.Print();
-  } else if (programming) {
-    // get data from slaves and store in parts
-    Part incoming;
-    Serial.println("retreving data from slaves");
-    incoming = master.retrievePartFromSlaves();
-    printSongPart(incoming, partIndex);
 
-    channel.SetClockPart(incoming.clockData);
-    channel.SetDrumSequencerPart(incoming.drumSequencerData);
-    channel.SetSamplerPart(incoming.samplerData);
+  if(programming) {
+    int selected = ui->getSelectedPart();
+
+    if(selected == -1) {
+      // No part selected — initialize if empty, then select
+      if(channel.PageCount() == 0) {
+        channel.SetPageCount(1);
+        channel.SetRepeats(4);
+        channel.SetChainTo(partIndex);
+        channel.SetClockPart(InitClockPart());
+        channel.SetDrumSequencerPart(InitDrumSequencerPart());
+        channel.SetSamplerPart(InitSamplerPart());
+        Serial.print("initialized part ");
+        Serial.println(partIndex);
+      }
+      ui->selectPart(partIndex);
+      sendPartToSlaves(partIndex);
+
+    } else if(partIndex == selected) {
+      // Same part pressed again — commit (capture from slaves)
+      capturePartFromSlaves(partIndex);
+      ui->deselectPart();
+
+    } else {
+      // Different part pressed — cancel current, select new
+      revertPart(selected);
+      ui->deselectPart();
+      if(channel.PageCount() == 0) {
+        channel.SetPageCount(1);
+        channel.SetRepeats(4);
+        channel.SetChainTo(partIndex);
+        channel.SetClockPart(InitClockPart());
+        channel.SetDrumSequencerPart(InitDrumSequencerPart());
+        channel.SetSamplerPart(InitSamplerPart());
+        Serial.print("initialized part ");
+        Serial.println(partIndex);
+      }
+      ui->selectPart(partIndex);
+      sendPartToSlaves(partIndex);
+    }
+
   } else if(parts[currentPartIndex].IsStarted() && (now - lastClockPulse) < 2000) {
-    // set part that were pressed as next part to the current part
     parts[currentPartIndex].SetChainTo(partIndex);
   } else {
-    // stop any stale part
     if(parts[currentPartIndex].IsStarted()) {
       parts[currentPartIndex].Stop();
     }
-    // send part to slaves
     master.sendCurrentPartIndex(partIndex);
     master.sendInstruction(clockSlave.getAddress(), Instruction::Start);
     hasPulse = false;

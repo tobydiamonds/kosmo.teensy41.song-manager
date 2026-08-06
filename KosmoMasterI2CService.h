@@ -189,6 +189,18 @@ public:
     return package;
   }
 
+  void sendPartToSlaves(const Part& part, uint8_t partIndex) {
+    long traceId = millis();
+    for(int j=0; j<numSlaves; j++) {
+      size_t dataSize = slaves[j]->getDataSize();
+      InstructionPayload payload;
+      payload.partIndex = partIndex;
+      payload.data = slaves[j]->getData(part);
+      payload.size = dataSize;
+      slaves[j]->addPendingInstruction(Instruction::SetParts, payload, traceId);
+    }
+  }
+
   InstructionPackage sendCurrentPartIndex(uint8_t partIndex) {
     long traceId = millis();
     InstructionPackage package(traceId);
